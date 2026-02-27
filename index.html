@@ -707,8 +707,8 @@ function renderForecast() {
     const pl = (p.partType||'').toLowerCase(), bl = (p.brand||'').toLowerCase();
     let cw = 1.0; for (const [k, w] of Object.entries(catW)) { if (pl.includes(k)) { cw = w; break; } }
     let bw = 1.0; for (const [k, w] of Object.entries(brandW)) { if (bl.includes(k)) { bw = w; break; } }
-    const baseMonthly = p.last30 > 0 ? p.last30 : (p.usedMonth > 0 ? p.usedMonth : 0);
-    if (baseMonthly === 0) return null;
+    const baseMonthly = p.last30 > 0 ? p.last30 : 0;
+    if (baseMonthly === 0) return null; // Only forecast parts with real recent sales
     const recommended = Math.ceil(baseMonthly * GROWTH_RATE * seasonMult * cw * bw);
     const toOrder = Math.max(0, recommended - p.inStock);
     const priority = p.inStock === 0 ? 'CRITICAL' : p.daysRemaining <= 3 ? 'CRITICAL' : p.daysRemaining <= 7 ? 'HIGH' : toOrder > 0 ? 'MED' : 'OK';
@@ -718,29 +718,53 @@ function renderForecast() {
     return o[a.priority] - o[b.priority] || b.toOrder - a.toOrder;
   });
 
-  const critical = forecast.filter(p => p.priority === 'CRITICAL').length;
-  const high = forecast.filter(p => p.priority === 'HIGH').length;
+  // Group by Brand + Part Type
+  // Group by Brand + Part Type, keep models listed
+  const grouped = {};
+  for (const p of forecast) {
+    const brand = p.brand || 'Unknown';
+    const gkey = `${brand}|||${p.partType}`;
+    if (!grouped[gkey]) grouped[gkey] = { brand, partType: p.partType, models: [], inStock: 0, sold30: 0, toOrder: 0, priority: 'OK' };
+    const g = grouped[gkey];
+    g.inStock += p.inStock;
+    g.sold30 += p.last30;
+    g.toOrder += p.toOrder;
+    if (p.model && !g.models.includes(p.model)) g.models.push(p.model);
+    const order = { CRITICAL:0, HIGH:1, MED:2, OK:3 };
+    if (order[p.priority] < order[g.priority]) g.priority = p.priority;
+  }
+
+  const groupedArr = Object.values(grouped)
+    .filter(g => g.toOrder > 0)
+    .sort((a, b) => {
+      const o = { CRITICAL:0, HIGH:1, MED:2, OK:3 };
+      return o[a.priority] - o[b.priority] || b.toOrder - a.toOrder;
+    });
+
+  const gcritical = groupedArr.filter(g => g.priority === 'CRITICAL').length;
+  const ghigh = groupedArr.filter(g => g.priority === 'HIGH').length;
+  const totalToOrder = groupedArr.reduce((a, g) => a + g.toOrder, 0);
 
   document.getElementById('forecast-content').innerHTML = `
     <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-      <div class="alert alert-red" style="flex:1;margin:0"><strong>${critical} CRITICAL</strong> — Order immediately</div>
-      <div class="alert alert-yellow" style="flex:1;margin:0"><strong>${high} HIGH</strong> — Order this week</div>
+      <div class="alert alert-red" style="flex:1;margin:0"><strong>${gcritical} CRITICAL</strong> — Order immediately</div>
+      <div class="alert alert-yellow" style="flex:1;margin:0"><strong>${ghigh} HIGH</strong> — Order this week</div>
+      <div class="alert alert-blue" style="flex:1;margin:0"><strong>${totalToOrder} total units</strong> across ${groupedArr.length} categories</div>
     </div>
+    <div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-bottom:12px;">Only showing parts with confirmed sales in last 30 days</div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Sold/30d</th><th>Daily</th><th>SA Weight</th><th>Rec 30d Supply</th><th>To Order</th><th>Priority</th></tr></thead>
-      <tbody>${forecast.map(p => `<tr>
-        <td><strong>${p.partType||'—'}</strong></td>
-        <td style="color:var(--text2)">${p.model||'—'}</td>
-        <td>${p.brand?`<span class="badge badge-blue">${p.brand}</span>`:'—'}</td>
-        <td><span class="num" style="color:${p.inStock===0?'var(--accent2)':p.daysRemaining<=7?'var(--accent4)':'var(--accent3)'}">${p.inStock}</span></td>
-        <td><span class="num" style="color:var(--accent4)">${p.last30}</span></td>
-        <td class="sku">${p.daily.toFixed(2)}/d</td>
-        <td class="sku">${(p.cw*p.bw).toFixed(2)}×</td>
-        <td><span class="num" style="color:var(--accent)">${p.recommended}</span></td>
-        <td><span class="num" style="font-size:18px;color:var(--accent)">${p.toOrder}</span></td>
-        <td><span class="badge ${p.priority==='CRITICAL'?'badge-red':p.priority==='HIGH'?'badge-red':p.priority==='MED'?'badge-yellow':'badge-green'}">${p.priority}</span></td>
+      <thead><tr><th>Brand</th><th>Part Type</th><th>Models</th><th>In Stock</th><th>Sold/30d</th><th>To Order</th><th>Priority</th></tr></thead>
+      <tbody>${groupedArr.map(g => `<tr>
+        <td>${g.brand !== 'Unknown' ? `<span class="badge badge-blue">${g.brand}</span>` : '<span style="color:var(--text3)">—</span>'}</td>
+        <td><strong>${g.partType||'—'}</strong></td>
+        <td style="color:var(--text2);font-size:12px;max-width:280px">${g.models.join(', ')}</td>
+        <td><span class="num" style="color:var(--accent3)">${g.inStock}</span></td>
+        <td><span class="num" style="color:var(--accent4)">${g.sold30}</span></td>
+        <td><span class="num" style="font-size:22px;color:var(--accent)">${g.toOrder}</span></td>
+        <td><span class="badge ${g.priority==='CRITICAL'?'badge-red':g.priority==='HIGH'?'badge-red':g.priority==='MED'?'badge-yellow':'badge-green'}">${g.priority}</span></td>
       </tr>`).join('')}</tbody>
-    </table></div>`;
+    </table></div>
+    <div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px;">Quantities based on 30-day sales velocity + 7.5% growth · ${LEAD_TIME_DAYS}-day SA lead time buffer included</div>`;
 }
 </script>
 </body>
