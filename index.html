@@ -244,12 +244,14 @@ async function loadData() {
   allParts = [];
   let offset = null;
 
+  const TOKEN = 'patW1fnCMSLB9FwEr';
   try {
     do {
-      let url = `/api/airtable?base=${baseId}&table=${encodeURIComponent(table)}`;
-      if (offset) url += `&offset=${offset}`;
-      const res = await fetch(url);
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || `HTTP ${res.status}`); }
+      let airtableUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?pageSize=100`;
+      if (offset) airtableUrl += `&offset=${offset}`;
+      const url = `https://corsproxy.io/?${encodeURIComponent(airtableUrl)}`;
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}`, 'x-requested-with': 'XMLHttpRequest' } });
+      if (!res.ok) { const txt = await res.text(); let msg; try { const e = JSON.parse(txt); msg = typeof e.error === 'object' ? JSON.stringify(e.error) : (e.error || txt); } catch(_) { msg = txt; } throw new Error(msg); }
       const data = await res.json();
       data.records.forEach(r => {
         const f = r.fields;
