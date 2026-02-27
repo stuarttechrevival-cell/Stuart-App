@@ -1,5 +1,3 @@
-const https = require('https');
-
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -8,12 +6,8 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
   const { table, base, offset } = req.query;
-  const token = process.env.AIRTABLE_TOKEN;
+  const token = 'patW1fnCMSLB9FwEr';
 
-  if (!token) {
-    res.status(500).json({ error: 'AIRTABLE_TOKEN not set' });
-    return;
-  }
   if (!table || !base) {
     res.status(400).json({ error: 'Missing base or table param' });
     return;
