@@ -4,228 +4,268 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stuart/Wessel — Stock Intelligence</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Familjen+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #080c0f; --bg2: #0e1419; --bg3: #151d24; --bg4: #1c262f;
-  --border: #1e2d38; --border2: #2a3d4a;
-  --accent: #00d4ff; --accent2: #ff4757; --accent3: #2ed573; --accent4: #ffa502;
-  --text: #e8f4f8; --text2: #8faab8; --text3: #4a6a7a;
-  --mono: 'DM Mono', monospace; --sans: 'Familjen Grotesk', sans-serif;
+  --bg:#080c0f;--bg2:#0e1419;--bg3:#151d24;--bg4:#1c262f;
+  --border:#1e2d38;--border2:#2a3d4a;
+  --accent:#00d4ff;--accent2:#ff4757;--accent3:#2ed573;--accent4:#ffa502;
+  --text:#e8f4f8;--text2:#8faab8;--text3:#4a6a7a;
+  --mono:'DM Mono',monospace;--sans:'Familjen Grotesk',sans-serif;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px; min-height:100vh; overflow-x:hidden; }
-body::before { content:''; position:fixed; inset:0; background-image:linear-gradient(rgba(0,212,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.03) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
-header { position:sticky; top:0; z-index:100; background:rgba(8,12,15,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 28px; height:56px; }
-.logo { font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:3px; text-transform:uppercase; color:var(--accent); }
-.logo span { color:var(--text3); }
-.header-right { display:flex; align-items:center; gap:16px; font-family:var(--mono); font-size:11px; }
-.sync-indicator { display:flex; align-items:center; gap:6px; color:var(--text3); }
-.dot { width:6px; height:6px; border-radius:50%; background:var(--accent3); animation:blink 2s infinite; }
-.dot.red { background:var(--accent2); animation:none; }
-.dot.yellow { background:var(--accent4); }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
-.app { display:flex; min-height:calc(100vh - 56px); position:relative; z-index:1; }
-aside { width:200px; min-width:200px; border-right:1px solid var(--border); padding:20px 0; background:var(--bg); position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto; }
-.nav-label { font-family:var(--mono); font-size:9px; letter-spacing:3px; color:var(--text3); text-transform:uppercase; padding:0 16px; margin-bottom:4px; }
-.nav-item { display:flex; align-items:center; gap:10px; padding:9px 16px; cursor:pointer; color:var(--text2); font-size:13px; font-weight:500; transition:all 0.15s; border-left:2px solid transparent; }
-.nav-item:hover { color:var(--text); background:var(--bg2); }
-.nav-item.active { color:var(--accent); border-left-color:var(--accent); background:rgba(0,212,255,0.05); }
-.nav-badge { margin-left:auto; background:var(--accent2); color:#fff; font-size:9px; font-family:var(--mono); padding:2px 5px; border-radius:2px; }
-.config-section { margin:16px; padding:12px; background:var(--bg3); border:1px solid var(--border); border-radius:4px; }
-.config-section label { display:block; font-family:var(--mono); font-size:9px; letter-spacing:2px; color:var(--text3); text-transform:uppercase; margin-bottom:4px; }
-.config-section input { width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 8px; font-family:var(--mono); font-size:11px; border-radius:2px; margin-bottom:8px; }
-.config-section input:focus { outline:none; border-color:var(--accent); }
-.btn-primary { width:100%; background:var(--accent); color:#000; border:none; padding:8px; font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:1px; text-transform:uppercase; cursor:pointer; border-radius:2px; transition:opacity 0.15s; }
-.btn-primary:hover { opacity:0.85; }
-.btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
-main { flex:1; overflow-y:auto; }
-.page { display:none; padding:28px; }
-.page.active { display:block; animation:fadeUp 0.2s ease; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
-.page-title { font-family:var(--mono); font-size:11px; letter-spacing:4px; text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
-.page-heading { font-family:var(--sans); font-size:32px; font-weight:700; line-height:1; letter-spacing:-0.5px; }
-.page-sub { color:var(--text2); font-size:13px; margin-top:6px; margin-bottom:28px; }
-.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); margin-bottom:28px; }
-.stat { background:var(--bg2); padding:20px; position:relative; overflow:hidden; }
-.stat::after { content:''; position:absolute; top:0; left:0; width:2px; height:100%; }
-.stat.blue::after{background:var(--accent)} .stat.green::after{background:var(--accent3)} .stat.red::after{background:var(--accent2)} .stat.yellow::after{background:var(--accent4)}
-.stat-label { font-family:var(--mono); font-size:9px; letter-spacing:2px; color:var(--text3); text-transform:uppercase; margin-bottom:10px; }
-.stat-val { font-family:var(--mono); font-size:32px; font-weight:500; line-height:1; }
-.stat-val.blue{color:var(--accent)} .stat-val.green{color:var(--accent3)} .stat-val.red{color:var(--accent2)} .stat-val.yellow{color:var(--accent4)}
-.stat-sub { font-size:11px; color:var(--text3); margin-top:6px; font-family:var(--mono); }
-.two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
-.three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:20px; }
-.card { background:var(--bg2); border:1px solid var(--border); border-radius:2px; padding:20px; }
-.card-title { font-family:var(--mono); font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--text3); margin-bottom:16px; }
-.table-wrap { border:1px solid var(--border); overflow:auto; border-radius:2px; }
-table { width:100%; border-collapse:collapse; }
-thead tr { background:var(--bg3); border-bottom:1px solid var(--accent); }
-th { padding:10px 14px; text-align:left; font-family:var(--mono); font-size:9px; letter-spacing:3px; text-transform:uppercase; color:var(--accent); white-space:nowrap; }
-td { padding:10px 14px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
-tr:last-child td { border-bottom:none; }
-tbody tr:hover td { background:var(--bg3); }
-.badge { display:inline-block; padding:2px 8px; border-radius:2px; font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:1px; text-transform:uppercase; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+header{position:sticky;top:0;z-index:100;background:rgba(8,12,15,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;}
+.logo{font-family:var(--mono);font-size:13px;font-weight:500;letter-spacing:3px;text-transform:uppercase;color:var(--accent);}
+.logo span{color:var(--text3);}
+.header-right{display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:11px;}
+.sync-indicator{display:flex;align-items:center;gap:6px;color:var(--text3);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent3);animation:blink 2s infinite;}
+.dot.red{background:var(--accent2);animation:none;}
+.dot.yellow{background:var(--accent4);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+.app{display:flex;min-height:calc(100vh - 56px);position:relative;z-index:1;}
+aside{width:210px;min-width:210px;border-right:1px solid var(--border);padding:16px 0;background:var(--bg);position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;}
+.nav-label{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;padding:0 16px;margin-bottom:4px;margin-top:12px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;color:var(--text2);font-size:13px;font-weight:500;transition:all 0.15s;border-left:2px solid transparent;}
+.nav-item:hover{color:var(--text);background:var(--bg2);}
+.nav-item.active{color:var(--accent);border-left-color:var(--accent);background:rgba(0,212,255,0.05);}
+.nav-badge{margin-left:auto;background:var(--accent2);color:#fff;font-size:9px;font-family:var(--mono);padding:2px 5px;border-radius:2px;}
+.sync-btn{margin:12px 16px 0;width:calc(100% - 32px);background:var(--accent);color:#000;border:none;padding:9px;font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:opacity 0.15s;}
+.sync-btn:hover{opacity:0.85;}
+.sync-btn:disabled{opacity:0.4;cursor:not-allowed;}
+.sync-status{margin:8px 16px;font-family:var(--mono);font-size:10px;color:var(--text3);}
+main{flex:1;overflow-y:auto;}
+.page{display:none;padding:28px;}
+.page.active{display:block;animation:fadeUp 0.2s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.page-title{font-family:var(--mono);font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;}
+.page-heading{font-family:var(--sans);font-size:28px;font-weight:700;line-height:1;letter-spacing:-0.5px;}
+.page-sub{color:var(--text2);font-size:13px;margin-top:6px;margin-bottom:24px;}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:24px;}
+.stat{background:var(--bg2);padding:18px;position:relative;overflow:hidden;}
+.stat::after{content:'';position:absolute;top:0;left:0;width:2px;height:100%;}
+.stat.blue::after{background:var(--accent)}.stat.green::after{background:var(--accent3)}.stat.red::after{background:var(--accent2)}.stat.yellow::after{background:var(--accent4)}
+.stat-label{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:8px;}
+.stat-val{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1;}
+.stat-val.blue{color:var(--accent)}.stat-val.green{color:var(--accent3)}.stat-val.red{color:var(--accent2)}.stat-val.yellow{color:var(--accent4)}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:5px;font-family:var(--mono);}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:2px;padding:18px;}
+.card-title{font-family:var(--mono);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;}
+.table-wrap{border:1px solid var(--border);overflow:auto;border-radius:2px;max-height:600px;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:var(--bg3);border-bottom:1px solid var(--accent);position:sticky;top:0;}
+th{padding:10px 12px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);white-space:nowrap;}
+td{padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tbody tr:hover td{background:var(--bg3);}
+.badge{display:inline-block;padding:2px 7px;border-radius:2px;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;}
 .badge-blue{background:rgba(0,212,255,0.12);color:var(--accent);border:1px solid rgba(0,212,255,0.25)}
 .badge-green{background:rgba(46,213,115,0.12);color:var(--accent3);border:1px solid rgba(46,213,115,0.25)}
 .badge-red{background:rgba(255,71,87,0.12);color:var(--accent2);border:1px solid rgba(255,71,87,0.25)}
 .badge-yellow{background:rgba(255,165,2,0.12);color:var(--accent4);border:1px solid rgba(255,165,2,0.25)}
-.toolbar { display:flex; gap:10px; margin-bottom:16px; align-items:center; flex-wrap:wrap; }
-.search-input { flex:1; min-width:200px; background:var(--bg2); border:1px solid var(--border); color:var(--text); padding:8px 12px; font-family:var(--mono); font-size:12px; border-radius:2px; }
-.search-input:focus { outline:none; border-color:var(--accent); }
-.filter-select { background:var(--bg2); border:1px solid var(--border); color:var(--text); padding:8px 12px; font-family:var(--mono); font-size:12px; border-radius:2px; cursor:pointer; }
-.filter-select:focus { outline:none; border-color:var(--accent); }
-.progress { height:3px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:6px; }
-.progress-fill { height:100%; border-radius:2px; transition:width 0.6s ease; }
-.alert { padding:12px 16px; border-radius:2px; font-size:13px; margin-bottom:12px; border-left:3px solid; }
+.toolbar{display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;}
+.search-input{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:7px 11px;font-family:var(--mono);font-size:12px;border-radius:2px;}
+.search-input:focus{outline:none;border-color:var(--accent);}
+.filter-select{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:7px 11px;font-family:var(--mono);font-size:12px;border-radius:2px;cursor:pointer;}
+.filter-select:focus{outline:none;border-color:var(--accent);}
+.progress{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:5px;}
+.progress-fill{height:100%;border-radius:2px;transition:width 0.6s ease;}
+.alert{padding:11px 14px;border-radius:2px;font-size:13px;margin-bottom:10px;border-left:3px solid;}
 .alert-red{border-color:var(--accent2);background:rgba(255,71,87,0.08)}
 .alert-yellow{border-color:var(--accent4);background:rgba(255,165,2,0.08)}
 .alert-green{border-color:var(--accent3);background:rgba(46,213,115,0.08)}
 .alert-blue{border-color:var(--accent);background:rgba(0,212,255,0.08)}
-.loading { text-align:center; padding:80px; color:var(--text3); }
-.spinner { width:32px; height:32px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; margin:0 auto 16px; }
-@keyframes spin { to{transform:rotate(360deg)} }
-.empty { text-align:center; padding:60px; color:var(--text3); }
-.empty-title { font-family:var(--mono); font-size:14px; letter-spacing:2px; margin-bottom:8px; text-transform:uppercase; }
-.order-qty { font-family:var(--mono); font-size:18px; font-weight:500; color:var(--accent); }
-.sku { font-family:var(--mono); font-size:11px; color:var(--text3); }
-::-webkit-scrollbar{width:4px;height:4px} ::-webkit-scrollbar-track{background:var(--bg)} ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.section-gap { margin-bottom:28px; }
+.empty{text-align:center;padding:50px;color:var(--text3);}
+.empty-title{font-family:var(--mono);font-size:13px;letter-spacing:2px;margin-bottom:6px;text-transform:uppercase;}
+.sku{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.num{font-family:var(--mono);}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.section-gap{margin-bottom:20px;}
+.urgency-bar{height:4px;border-radius:2px;margin-top:4px;}
+.tab-row{display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border);}
+.tab{padding:8px 16px;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.tab:hover{color:var(--text2);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">Stuart<span>/</span>Wessel <span style="color:var(--text3);letter-spacing:1px;font-size:11px">STOCK INTELLIGENCE</span></div>
+  <div class="logo">Stuart<span>/</span>Wessel <span style="color:var(--text3);letter-spacing:1px;font-size:10px">STOCK INTELLIGENCE</span></div>
   <div class="header-right">
     <div class="sync-indicator"><div class="dot" id="sync-dot"></div><span id="sync-label">NOT CONNECTED</span></div>
     <span style="color:var(--text3)">|</span>
     <span id="last-sync" style="color:var(--text3)">—</span>
-    <span style="color:var(--text3)">SA MARKET</span>
+    <span style="color:var(--text3)">ZA · 20 REPAIRS/DAY</span>
   </div>
 </header>
 
 <div class="app">
   <aside>
-    <div class="config-section">
-      <label>Base ID</label>
-      <input type="text" id="base-id" value="appP1JCcNoTs54a2t" autocomplete="off">
-      <label>Table Name</label>
-      <input type="text" id="table-name" value="Parts Inventory Summary" autocomplete="off">
-      <button class="btn-primary" onclick="loadData()" id="load-btn">⟳ SYNC DATA</button>
-    </div>
-    <div style="padding:0 16px;margin-bottom:16px;">
-      <div class="nav-label" style="margin-bottom:8px;">Views</div>
-      <div class="nav-item active" data-page="dashboard" onclick="nav(this)"><span>◈</span> Dashboard</div>
-      <div class="nav-item" data-page="catalogue" onclick="nav(this)"><span>⊞</span> Catalogue</div>
-      <div class="nav-item" data-page="forecast" onclick="nav(this)"><span>◆</span> Forecast</div>
-      <div class="nav-item" data-page="alerts" onclick="nav(this)"><span>⚠</span> Low Stock <span class="nav-badge" id="alert-badge" style="display:none">0</span></div>
-      <div class="nav-item" data-page="trends" onclick="nav(this)"><span>▲</span> Trends</div>
-      <div class="nav-item" data-page="margins" onclick="nav(this)"><span>◎</span> Margins</div>
-    </div>
+    <button class="sync-btn" onclick="loadAll()" id="load-btn">⟳ SYNC DATA</button>
+    <div class="sync-status" id="sync-status">Click sync to load</div>
+
+    <div class="nav-label">Daily Operations</div>
+    <div class="nav-item active" data-page="dashboard" onclick="nav(this)">◈ Dashboard</div>
+    <div class="nav-item" data-page="reorder" onclick="nav(this)">⚡ Reorder Now <span class="nav-badge" id="reorder-badge" style="display:none">0</span></div>
+    <div class="nav-item" data-page="runout" onclick="nav(this)">⏱ 7-Day Runout <span class="nav-badge" id="runout-badge" style="display:none">0</span></div>
+
+    <div class="nav-label">Analysis</div>
+    <div class="nav-item" data-page="topmovers" onclick="nav(this)">▲ Top Movers</div>
+    <div class="nav-item" data-page="catalogue" onclick="nav(this)">⊞ Catalogue</div>
+    <div class="nav-item" data-page="deadstock" onclick="nav(this)">◎ Dead Stock</div>
+    <div class="nav-item" data-page="forecast" onclick="nav(this)">◆ Forecast</div>
   </aside>
 
   <main>
+
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
       <div class="page-title">Overview</div>
       <div class="page-heading">Stock Dashboard</div>
-      <div class="page-sub" id="dashboard-sub">Load data to begin analysis</div>
-      <div class="stats-row">
-        <div class="stat blue"><div class="stat-label">Total SKUs</div><div class="stat-val blue" id="s-skus">—</div><div class="stat-sub">Unique combinations</div></div>
-        <div class="stat green"><div class="stat-label">In Stock</div><div class="stat-val green" id="s-stock">—</div><div class="stat-sub">Units available</div></div>
-        <div class="stat yellow"><div class="stat-label">Used This Month</div><div class="stat-val yellow" id="s-used">—</div><div class="stat-sub">Feb 2026</div></div>
-        <div class="stat red"><div class="stat-label">Low Stock Alerts</div><div class="stat-val red" id="s-alerts">—</div><div class="stat-sub">Below threshold</div></div>
+      <div class="page-sub" id="dashboard-sub">Sync data to begin</div>
+
+      <div class="stats-row" id="stats-row">
+        <div class="stat blue"><div class="stat-label">Active SKUs</div><div class="stat-val blue" id="s-skus">—</div><div class="stat-sub">In use this month</div></div>
+        <div class="stat green"><div class="stat-label">Total In Stock</div><div class="stat-val green" id="s-stock">—</div><div class="stat-sub">Units available</div></div>
+        <div class="stat yellow"><div class="stat-label">Sold This Month</div><div class="stat-val yellow" id="s-sold">—</div><div class="stat-sub">Parts used in sales</div></div>
+        <div class="stat red"><div class="stat-label">Need Reorder</div><div class="stat-val red" id="s-reorder">—</div><div class="stat-sub">Below safe level</div></div>
       </div>
+
+      <div class="three-col section-gap">
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Daily Usage Rate</div><div class="stat-val blue" id="d-daily">—</div><div class="stat-sub">Parts/day (30d avg)</div></div>
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Weekly Usage Rate</div><div class="stat-val yellow" id="d-weekly">—</div><div class="stat-sub">Parts/week (30d avg)</div></div>
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Avg Days Cover</div><div class="stat-val green" id="d-cover">—</div><div class="stat-sub">At current usage rate</div></div>
+      </div>
+
       <div class="two-col section-gap">
-        <div class="card"><div class="card-title">Top Parts by Stock</div><div id="top-stock-list"><div class="empty"><div class="empty-title">No data</div></div></div></div>
-        <div class="card"><div class="card-title">Top Parts Used This Month</div><div id="top-used-list"><div class="empty"><div class="empty-title">No data</div></div></div></div>
+        <div class="card"><div class="card-title">Top 8 by Stock</div><div id="top-stock-list"><div class="empty"><div class="empty-title">No data</div></div></div></div>
+        <div class="card"><div class="card-title">Top 8 Sold This Month</div><div id="top-sold-list"><div class="empty"><div class="empty-title">No data</div></div></div></div>
       </div>
+
       <div class="two-col">
-        <div class="card"><div class="card-title">Brand Breakdown</div><div id="brand-breakdown"><div class="empty"><div class="empty-title">No data</div></div></div></div>
-        <div class="card"><div class="card-title">Part Type Breakdown</div><div id="type-breakdown"><div class="empty"><div class="empty-title">No data</div></div></div></div>
+        <div class="card"><div class="card-title">Sales by Brand</div><div id="brand-breakdown"></div></div>
+        <div class="card"><div class="card-title">Sales by Part Type</div><div id="type-breakdown"></div></div>
       </div>
+    </div>
+
+    <!-- REORDER NOW -->
+    <div class="page" id="page-reorder">
+      <div class="page-title">Action Required</div>
+      <div class="page-heading">Reorder This Week</div>
+      <div class="page-sub">Parts below safe stock level based on your 20 repairs/day rate and 2-3 day SA lead time</div>
+      <div class="toolbar">
+        <select class="filter-select" id="reorder-brand" onchange="renderReorder()"><option value="">All Brands</option></select>
+        <select class="filter-select" id="reorder-type" onchange="renderReorder()"><option value="">All Types</option></select>
+      </div>
+      <div id="reorder-content"><div class="empty"><div class="empty-title">Sync data to view</div></div></div>
+    </div>
+
+    <!-- 7-DAY RUNOUT -->
+    <div class="page" id="page-runout">
+      <div class="page-title">Urgent</div>
+      <div class="page-heading">Running Out in 7 Days</div>
+      <div class="page-sub">Parts that will hit zero stock within 7 days at current usage rate</div>
+      <div id="runout-content"><div class="empty"><div class="empty-title">Sync data to view</div></div></div>
+    </div>
+
+    <!-- TOP MOVERS -->
+    <div class="page" id="page-topmovers">
+      <div class="page-title">Usage Analysis</div>
+      <div class="page-heading">Top 20 Fastest Movers</div>
+      <div class="page-sub">Ranked by sales volume with daily, weekly and monthly rates</div>
+      <div class="tab-row">
+        <div class="tab active" onclick="switchTab(this,'tab-top-sold')">By Sales</div>
+        <div class="tab" onclick="switchTab(this,'tab-top-daily')">By Daily Rate</div>
+        <div class="tab" onclick="switchTab(this,'tab-top-cover')">Least Cover</div>
+      </div>
+      <div class="tab-content active" id="tab-top-sold"><div id="top-sold-table"></div></div>
+      <div class="tab-content" id="tab-top-daily"><div id="top-daily-table"></div></div>
+      <div class="tab-content" id="tab-top-cover"><div id="top-cover-table"></div></div>
     </div>
 
     <!-- CATALOGUE -->
     <div class="page" id="page-catalogue">
-      <div class="page-title">Inventory</div>
+      <div class="page-title">Full Inventory</div>
       <div class="page-heading">Parts Catalogue</div>
-      <div class="page-sub">All SKUs with live stock counts</div>
+      <div class="page-sub">All active SKUs with live stock and usage rates</div>
       <div class="toolbar">
         <input class="search-input" type="text" id="cat-search" placeholder="Search part, model, brand, SKU..." oninput="renderCatalogue()">
         <select class="filter-select" id="cat-brand" onchange="renderCatalogue()"><option value="">All Brands</option></select>
         <select class="filter-select" id="cat-type" onchange="renderCatalogue()"><option value="">All Types</option></select>
         <select class="filter-select" id="cat-sort" onchange="renderCatalogue()">
-          <option value="stock-desc">Stock: High → Low</option>
-          <option value="stock-asc">Stock: Low → High</option>
-          <option value="used-desc">Used: High → Low</option>
-          <option value="name-asc">Name A → Z</option>
+          <option value="stock-desc">Stock: High→Low</option>
+          <option value="stock-asc">Stock: Low→High</option>
+          <option value="sold-desc">Sold: High→Low</option>
+          <option value="daily-desc">Daily Rate: High→Low</option>
+          <option value="cover-asc">Cover: Least First</option>
+          <option value="name-asc">Name A→Z</option>
         </select>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>SKU</th><th>Part Type</th><th>Device Model</th><th>Brand</th><th>In Stock</th><th>Used/Month</th><th>Total</th><th>Status</th></tr></thead>
-          <tbody id="cat-body"><tr><td colspan="8"><div class="empty"><div class="empty-title">Load data to view catalogue</div></div></td></tr></tbody>
+          <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Sold/Mo</th><th>Daily Rate</th><th>Weekly Rate</th><th>Days Cover</th><th>Status</th></tr></thead>
+          <tbody id="cat-body"><tr><td colspan="9"><div class="empty"><div class="empty-title">Sync to view</div></div></td></tr></tbody>
         </table>
       </div>
       <div id="cat-count" style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px;"></div>
     </div>
 
+    <!-- DEAD STOCK -->
+    <div class="page" id="page-deadstock">
+      <div class="page-title">Inventory Health</div>
+      <div class="page-heading">Dead Stock Report</div>
+      <div class="page-sub">Zero sales this month AND last month — consider clearing or returning to supplier</div>
+      <div id="deadstock-content"><div class="empty"><div class="empty-title">Sync data to view</div></div></div>
+    </div>
+
     <!-- FORECAST -->
     <div class="page" id="page-forecast">
       <div class="page-title">SA Demand Forecast</div>
-      <div class="page-heading">Recommended Orders</div>
-      <div class="page-sub">Growth-adjusted ordering based on usage and SA market factors</div>
-      <div id="sa-alerts" style="margin-bottom:20px;"></div>
-      <div class="card section-gap" style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;">Forecast Parameters</div>
-          <div style="font-size:13px;color:var(--text2)">Growth: <span style="color:var(--accent3)">7.5% MoM</span> &nbsp;|&nbsp; Safety stock: <span style="color:var(--accent)">3–5 days</span> &nbsp;|&nbsp; Courier buffer: <span style="color:var(--accent4)">1–3 days SA</span></div>
-        </div>
-        <button class="btn-primary" style="width:160px;" onclick="generateForecast()">GENERATE</button>
-      </div>
-      <div id="forecast-content"><div class="empty"><div class="empty-title">Load data then click Generate</div></div></div>
+      <div class="page-heading">Order Recommendations</div>
+      <div class="page-sub">Based on your actual sales velocity, 20 repairs/day, 2-3 day SA lead time, 7.5% growth target</div>
+      <div id="forecast-sa-alerts" style="margin-bottom:16px;"></div>
+      <div id="forecast-content"><div class="empty"><div class="empty-title">Sync data then this auto-generates</div></div></div>
     </div>
 
-    <!-- ALERTS -->
-    <div class="page" id="page-alerts">
-      <div class="page-title">Warnings</div>
-      <div class="page-heading">Low Stock Alerts</div>
-      <div class="page-sub">Parts requiring immediate reorder attention</div>
-      <div class="toolbar">
-        <select class="filter-select" id="alert-threshold" onchange="renderAlerts()">
-          <option value="5">Threshold: 5 units</option>
-          <option value="10" selected>Threshold: 10 units</option>
-          <option value="20">Threshold: 20 units</option>
-          <option value="50">Threshold: 50 units</option>
-        </select>
-        <select class="filter-select" id="alert-brand" onchange="renderAlerts()"><option value="">All Brands</option></select>
-      </div>
-      <div id="alerts-content"><div class="empty"><div class="empty-title">Load data to view alerts</div></div></div>
-    </div>
-
-    <!-- TRENDS -->
-    <div class="page" id="page-trends">
-      <div class="page-title">Usage Analysis</div>
-      <div class="page-heading">This Month's Trends</div>
-      <div class="page-sub">Parts movement and velocity for February 2026</div>
-      <div id="trends-content"><div class="empty"><div class="empty-title">Load data to view trends</div></div></div>
-    </div>
-
-    <!-- MARGINS -->
-    <div class="page" id="page-margins">
-      <div class="page-title">Profitability</div>
-      <div class="page-heading">Margin Analysis</div>
-      <div class="page-sub">Stock velocity and value concentration by part type and brand</div>
-      <div id="margins-content"><div class="empty"><div class="empty-title">Load data to view margin analysis</div></div></div>
-    </div>
   </main>
 </div>
 
 <script>
-let allParts = [];
+// ═══════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════
+const BASE_ID = 'appP1JCcNoTs54a2t';
+const SUMMARY_TABLE = 'Parts Inventory Summary';
+const LINE_ITEMS_TABLE = 'Line items';
+const REPAIRS_PER_DAY = 20;
+const LEAD_TIME_DAYS = 3;
+const GROWTH_RATE = 1.075;
 
+// ═══════════════════════════════════
+// STATE
+// ═══════════════════════════════════
+let allParts = [];       // from Parts Inventory Summary
+let salesData = {};      // { "partType|||model": { thisMonth, lastMonth, daily, weekly } }
+let dataLoaded = false;
+
+// ═══════════════════════════════════
+// DATE HELPERS
+// ═══════════════════════════════════
+const now = new Date();
+const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+// ═══════════════════════════════════
+// NAV
+// ═══════════════════════════════════
 function nav(el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -233,305 +273,474 @@ function nav(el) {
   document.getElementById('page-' + el.dataset.page).classList.add('active');
 }
 
-async function loadData() {
-  const baseId = document.getElementById('base-id').value.trim();
-  const table = document.getElementById('table-name').value.trim();
-  if (!baseId || !table) { alert('Fill in Base ID and Table Name.'); return; }
+function switchTab(el, tabId) {
+  el.closest('.page').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.closest('.page').querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
 
+// ═══════════════════════════════════
+// FETCH
+// ═══════════════════════════════════
+async function fetchAllPages(table, extraParams = '') {
+  let records = [], offset = null;
+  do {
+    let url = `/api/airtable?base=${BASE_ID}&table=${encodeURIComponent(table)}${extraParams}`;
+    if (offset) url += `&offset=${encodeURIComponent(offset)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(JSON.stringify(data.error));
+    records = records.concat(data.records || []);
+    offset = data.offset;
+  } while (offset);
+  return records;
+}
+
+// ═══════════════════════════════════
+// LOAD ALL DATA
+// ═══════════════════════════════════
+async function loadAll() {
   const btn = document.getElementById('load-btn');
   btn.disabled = true; btn.textContent = 'SYNCING...';
-  setSyncStatus('syncing');
-  allParts = [];
-  let offset = null;
+  setSyncStatus('syncing', 'Loading summary...');
 
-  const TOKEN = 'patwWFrjQAyJOJ5PY.c4e8c77d6c085d107074c367d37c313347f2f31a7429d013f15851e1e73c4c67';
   try {
-    do {
-      let url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?pageSize=100`;
-      if (offset) url += `&offset=${offset}`;
-      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } });
-      if (!res.ok) { const txt = await res.text(); let msg; try { const e = JSON.parse(txt); msg = typeof e.error === 'object' ? JSON.stringify(e.error) : (e.error || txt); } catch(_) { msg = txt; } throw new Error(msg); }
-      const data = await res.json();
-      data.records.forEach(r => {
-        const f = r.fields;
-        allParts.push({
-          id: r.id,
-          sku: f['SKU'] || '',
-          partType: f['Part Type'] || '',
-          model: f['Device Model'] || '',
-          brand: f['Brand'] || '',
-          inStock: Number(f['Total In Stock']) || 0,
-          usedMonth: Number(f['Total Used This Month']) || 0,
-          totalCount: Number(f['Total Count']) || 0,
-        });
-      });
-      offset = data.offset;
-    } while (offset);
+    // 1. Load Parts Inventory Summary
+    const summaryRecords = await fetchAllPages(SUMMARY_TABLE);
+    allParts = summaryRecords.map(r => {
+      const f = r.fields;
+      return {
+        id: r.id,
+        sku: f['SKU'] || '',
+        partType: f['Part Type'] || '',
+        model: f['Device Model'] || '',
+        brand: f['Brand'] || '',
+        inStock: Number(f['Total In Stock']) || 0,
+        usedMonth: Number(f['Total Used This Month']) || 0,
+        totalCount: Number(f['Total Count']) || 0,
+      };
+    });
 
-    setSyncStatus('live');
-    document.getElementById('last-sync').textContent = 'SYNCED ' + new Date().toLocaleTimeString('en-ZA');
-    processAll();
+    setSyncStatus('syncing', `Loaded ${allParts.length} SKUs. Loading sales data...`);
+
+    // 2. Load Line Items for sales analysis
+    // Filter: Last desig of device = SOLD, and Allocation Timestamp in last 60 days
+    const sixtyDaysAgo = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const filterFormula = `AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"${sixtyDaysAgo}"))`;
+    const fieldsParam = `fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation Timestamp&fields[]=Last desig of device`;
+
+    const lineRecords = await fetchAllPages(LINE_ITEMS_TABLE, `&${fieldsParam}&filterByFormula=${encodeURIComponent(filterFormula)}`);
+
+    setSyncStatus('syncing', `Processing ${lineRecords.length} sales records...`);
+
+    // 3. Build sales data
+    salesData = {};
+    for (const r of lineRecords) {
+      const f = r.fields;
+      const partType = (f['Part Type'] || 'Unknown').trim();
+      const model = (f['Models Strict (2)'] || 'Unknown').trim();
+      const brand = (f['Brand 2'] || '').trim();
+      const ts = f['Allocation Timestamp'];
+      if (!ts) continue;
+      const date = new Date(ts);
+      const key = `${partType}|||${model}`;
+
+      if (!salesData[key]) salesData[key] = { partType, model, brand, thisMonth: 0, lastMonth: 0, last30: 0, allTime: 0 };
+      salesData[key].allTime++;
+      if (date >= thisMonthStart) salesData[key].thisMonth++;
+      if (date >= lastMonthStart && date <= lastMonthEnd) salesData[key].lastMonth++;
+      if (date >= thirtyDaysAgo) salesData[key].last30++;
+    }
+
+    // Compute daily/weekly rates from 30-day rolling
+    for (const key of Object.keys(salesData)) {
+      const d = salesData[key];
+      d.daily = d.last30 / 30;
+      d.weekly = d.last30 / 4.3;
+    }
+
+    // Merge sales data into allParts
+    allParts = allParts.map(p => {
+      const key = `${p.partType}|||${p.model}`;
+      const s = salesData[key] || { thisMonth: 0, lastMonth: 0, last30: 0, daily: 0, weekly: 0 };
+      const daysRemaining = s.daily > 0 ? Math.floor(p.inStock / s.daily) : 999;
+      return { ...p, ...s, daysRemaining };
+    });
+
+    setSyncStatus('live', `Synced ${allParts.length} SKUs · ${lineRecords.length} sales`);
+    document.getElementById('last-sync').textContent = new Date().toLocaleTimeString('en-ZA');
+    dataLoaded = true;
+    populateFilters();
+    renderAll();
+
   } catch(e) {
-    setSyncStatus('error');
-    document.getElementById('dashboard-sub').textContent = 'ERROR: ' + e.message;
-    alert('Connection failed: ' + e.message);
+    setSyncStatus('error', 'Error: ' + e.message);
+    alert('Sync failed: ' + e.message);
   }
 
   btn.disabled = false; btn.textContent = '⟳ SYNC DATA';
 }
 
-function setSyncStatus(state) {
+function setSyncStatus(state, msg) {
   const dot = document.getElementById('sync-dot');
   const label = document.getElementById('sync-label');
-  if (state==='live'){dot.className='dot';label.textContent='LIVE';}
-  else if (state==='syncing'){dot.className='dot yellow';label.textContent='SYNCING';}
-  else {dot.className='dot red';label.textContent='ERROR';}
+  const status = document.getElementById('sync-status');
+  if (state === 'live') { dot.className = 'dot'; label.textContent = 'LIVE'; }
+  else if (state === 'syncing') { dot.className = 'dot yellow'; label.textContent = 'SYNCING'; }
+  else { dot.className = 'dot red'; label.textContent = 'ERROR'; }
+  if (status && msg) status.textContent = msg;
 }
 
-function processAll() {
-  renderDashboard(); renderCatalogue(); renderAlerts(); renderTrends(); renderMargins(); populateFilters(); updateAlertBadge();
+// ═══════════════════════════════════
+// RENDER ALL
+// ═══════════════════════════════════
+function renderAll() {
+  renderDashboard();
+  renderReorder();
+  renderRunout();
+  renderTopMovers();
+  renderCatalogue();
+  renderDeadStock();
+  renderForecast();
+  updateBadges();
 }
 
+function populateFilters() {
+  const brands = [...new Set(allParts.map(p => p.brand).filter(Boolean))].sort();
+  const types = [...new Set(allParts.map(p => p.partType).filter(Boolean))].sort();
+
+  ['reorder-brand', 'cat-brand'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.innerHTML = '<option value="">All Brands</option>' + brands.map(b => `<option>${b}</option>`).join('');
+  });
+  ['reorder-type', 'cat-type'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option>${t}</option>`).join('');
+  });
+}
+
+function updateBadges() {
+  const safeStock = p => Math.ceil((p.daily * (LEAD_TIME_DAYS + 7)));
+  const reorderCount = allParts.filter(p => p.daily > 0 && p.inStock < safeStock(p)).length;
+  const runoutCount = allParts.filter(p => p.daysRemaining <= 7 && p.daily > 0).length;
+
+  const rb = document.getElementById('reorder-badge');
+  rb.textContent = reorderCount; rb.style.display = reorderCount > 0 ? 'inline-block' : 'none';
+  const rnb = document.getElementById('runout-badge');
+  rnb.textContent = runoutCount; rnb.style.display = runoutCount > 0 ? 'inline-block' : 'none';
+  document.getElementById('s-reorder').textContent = reorderCount;
+}
+
+// ═══════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════
 function renderDashboard() {
-  const totalStock = allParts.reduce((a,p)=>a+p.inStock,0);
-  const totalUsed = allParts.reduce((a,p)=>a+p.usedMonth,0);
-  const lowStock = allParts.filter(p=>p.inStock<=10&&p.inStock>0).length;
-  const zeroStock = allParts.filter(p=>p.inStock===0).length;
-  document.getElementById('s-skus').textContent = allParts.length.toLocaleString();
-  document.getElementById('s-stock').textContent = totalStock.toLocaleString();
-  document.getElementById('s-used').textContent = totalUsed.toLocaleString();
-  document.getElementById('s-alerts').textContent = (lowStock+zeroStock).toLocaleString();
-  document.getElementById('dashboard-sub').textContent = `${allParts.length} SKUs · ${totalStock} units in stock · ${zeroStock} out of stock · Synced ${new Date().toLocaleTimeString('en-ZA')}`;
+  const activeSKUs = allParts.filter(p => p.thisMonth > 0 || p.inStock > 0).length;
+  const totalStock = allParts.reduce((a, p) => a + p.inStock, 0);
+  const totalSoldMonth = allParts.reduce((a, p) => a + p.thisMonth, 0);
+  const totalDaily = allParts.reduce((a, p) => a + p.daily, 0);
+  const avgCover = totalDaily > 0 ? Math.floor(totalStock / totalDaily) : 0;
 
-  const topStock = [...allParts].sort((a,b)=>b.inStock-a.inStock).slice(0,8);
-  const maxStock = topStock[0]?.inStock||1;
-  document.getElementById('top-stock-list').innerHTML = topStock.map(p=>`
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span>${p.partType||'—'} <span style="color:var(--text3);font-size:11px">${p.model}</span></span>
-        <span style="font-family:var(--mono);color:var(--accent3)">${p.inStock}</span>
+  document.getElementById('s-skus').textContent = activeSKUs.toLocaleString();
+  document.getElementById('s-stock').textContent = totalStock.toLocaleString();
+  document.getElementById('s-sold').textContent = totalSoldMonth.toLocaleString();
+  document.getElementById('d-daily').textContent = totalDaily.toFixed(1);
+  document.getElementById('d-weekly').textContent = (totalDaily * 7).toFixed(0);
+  document.getElementById('d-cover').textContent = avgCover + 'd';
+  document.getElementById('dashboard-sub').textContent =
+    `${activeSKUs} active SKUs · ${totalStock} units in stock · ${totalSoldMonth} sold this month · ${totalDaily.toFixed(1)} parts/day avg`;
+
+  // Top 8 by stock
+  const topStock = [...allParts].sort((a, b) => b.inStock - a.inStock).slice(0, 8);
+  const maxStock = topStock[0]?.inStock || 1;
+  document.getElementById('top-stock-list').innerHTML = topStock.map(p => `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:13px">${p.partType} <span style="color:var(--text3);font-size:11px">${p.model}</span></span>
+        <span class="num" style="color:var(--accent3)">${p.inStock}</span>
       </div>
       <div class="progress"><div class="progress-fill" style="width:${(p.inStock/maxStock*100).toFixed(0)}%;background:var(--accent3)"></div></div>
     </div>`).join('');
 
-  const topUsed = [...allParts].filter(p=>p.usedMonth>0).sort((a,b)=>b.usedMonth-a.usedMonth).slice(0,8);
-  const maxUsed = topUsed[0]?.usedMonth||1;
-  document.getElementById('top-used-list').innerHTML = topUsed.length ? topUsed.map(p=>`
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span>${p.partType||'—'} <span style="color:var(--text3);font-size:11px">${p.model}</span></span>
-        <span style="font-family:var(--mono);color:var(--accent4)">${p.usedMonth}</span>
-      </div>
-      <div class="progress"><div class="progress-fill" style="width:${(p.usedMonth/maxUsed*100).toFixed(0)}%;background:var(--accent4)"></div></div>
-    </div>`).join('') : '<div style="color:var(--text3);font-size:12px">No usage recorded this month</div>';
-
-  const brands={}, types={};
-  allParts.forEach(p=>{
-    const b=p.brand||'Unknown'; brands[b]=(brands[b]||0)+p.inStock;
-    const t=p.partType||'Unknown'; types[t]=(types[t]||0)+p.inStock;
-  });
-  const brandE=Object.entries(brands).sort((a,b)=>b[1]-a[1]).slice(0,8), maxB=brandE[0]?.[1]||1;
-  document.getElementById('brand-breakdown').innerHTML = brandE.map(([b,c])=>`
+  // Top 8 sold this month
+  const topSold = [...allParts].filter(p => p.thisMonth > 0).sort((a, b) => b.thisMonth - a.thisMonth).slice(0, 8);
+  const maxSold = topSold[0]?.thisMonth || 1;
+  document.getElementById('top-sold-list').innerHTML = topSold.length ? topSold.map(p => `
     <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>${b}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${c} units</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:13px">${p.partType} <span style="color:var(--text3);font-size:11px">${p.model}</span></span>
+        <span class="num" style="color:var(--accent4)">${p.thisMonth}</span>
+      </div>
+      <div class="progress"><div class="progress-fill" style="width:${(p.thisMonth/maxSold*100).toFixed(0)}%;background:var(--accent4)"></div></div>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:12px">No sales data this month</div>';
+
+  // Brand breakdown by sales
+  const brands = {}, types = {};
+  allParts.forEach(p => {
+    const b = p.brand || 'Unknown'; brands[b] = (brands[b] || 0) + p.thisMonth;
+    const t = p.partType || 'Unknown'; types[t] = (types[t] || 0) + p.thisMonth;
+  });
+  const brandE = Object.entries(brands).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxB = brandE[0]?.[1] || 1;
+  document.getElementById('brand-breakdown').innerHTML = brandE.map(([b, c]) => `
+    <div style="margin-bottom:9px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>${b}</span><span class="num" style="font-size:11px;color:var(--text3)">${c} sold</span></div>
       <div class="progress"><div class="progress-fill" style="width:${(c/maxB*100).toFixed(0)}%;background:var(--accent)"></div></div>
     </div>`).join('');
 
-  const typeE=Object.entries(types).sort((a,b)=>b[1]-a[1]).slice(0,8), maxT=typeE[0]?.[1]||1;
-  document.getElementById('type-breakdown').innerHTML = typeE.map(([t,c])=>`
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>${t}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${c} units</span></div>
+  const typeE = Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxT = typeE[0]?.[1] || 1;
+  document.getElementById('type-breakdown').innerHTML = typeE.map(([t, c]) => `
+    <div style="margin-bottom:9px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>${t}</span><span class="num" style="font-size:11px;color:var(--text3)">${c} sold</span></div>
       <div class="progress"><div class="progress-fill" style="width:${(c/maxT*100).toFixed(0)}%;background:var(--accent4)"></div></div>
     </div>`).join('');
 }
 
-function populateFilters() {
-  const brands=[...new Set(allParts.map(p=>p.brand).filter(Boolean))].sort();
-  const types=[...new Set(allParts.map(p=>p.partType).filter(Boolean))].sort();
-  ['cat-brand','alert-brand'].forEach(id=>{
-    const el=document.getElementById(id); if(!el)return;
-    el.innerHTML='<option value="">All Brands</option>'+brands.map(b=>`<option value="${b}">${b}</option>`).join('');
-  });
-  const typeEl=document.getElementById('cat-type');
-  if(typeEl) typeEl.innerHTML='<option value="">All Types</option>'+types.map(t=>`<option value="${t}">${t}</option>`).join('');
+// ═══════════════════════════════════
+// REORDER
+// ═══════════════════════════════════
+function renderReorder() {
+  const brand = document.getElementById('reorder-brand')?.value || '';
+  const type = document.getElementById('reorder-type')?.value || '';
+
+  // Safe stock = enough to cover lead time + 1 week buffer
+  const safeStock = p => Math.ceil(p.daily * (LEAD_TIME_DAYS + 7));
+  const orderQty = p => Math.ceil(p.daily * 30 * GROWTH_RATE) - p.inStock;
+
+  let parts = allParts.filter(p => {
+    const needsReorder = p.daily > 0 && p.inStock < safeStock(p);
+    return needsReorder && (!brand || p.brand === brand) && (!type || p.partType === type);
+  }).sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+  if (!parts.length) {
+    document.getElementById('reorder-content').innerHTML = `<div class="alert alert-green">All parts above safe stock levels. No reorders needed this week.</div>`;
+    return;
+  }
+
+  const critical = parts.filter(p => p.daysRemaining <= 3);
+  const urgent = parts.filter(p => p.daysRemaining > 3 && p.daysRemaining <= 7);
+  const normal = parts.filter(p => p.daysRemaining > 7);
+
+  document.getElementById('reorder-content').innerHTML = `
+    ${critical.length ? `<div class="alert alert-red"><strong>${critical.length} CRITICAL</strong> — Stock out within 3 days. Order immediately.</div>` : ''}
+    ${urgent.length ? `<div class="alert alert-yellow"><strong>${urgent.length} URGENT</strong> — Stock out within 7 days.</div>` : ''}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Daily Rate</th><th>Days Left</th><th>Order Qty</th><th>Priority</th></tr></thead>
+      <tbody>${parts.map(p => {
+        const days = p.daysRemaining;
+        const priority = days <= 3 ? ['CRITICAL','badge-red'] : days <= 7 ? ['URGENT','badge-red'] : ['REORDER','badge-yellow'];
+        const qty = Math.max(1, orderQty(p));
+        return `<tr>
+          <td><strong>${p.partType}</strong></td>
+          <td style="color:var(--text2)">${p.model}</td>
+          <td>${p.brand ? `<span class="badge badge-blue">${p.brand}</span>` : '—'}</td>
+          <td><span class="num" style="color:${days<=3?'var(--accent2)':days<=7?'var(--accent4)':'var(--text)'}">${p.inStock}</span></td>
+          <td><span class="num" style="color:var(--text2)">${p.daily.toFixed(2)}/day</span></td>
+          <td><span class="num" style="color:${days<=3?'var(--accent2)':days<=7?'var(--accent4)':'var(--accent3)'}">${days === 999 ? '∞' : days + 'd'}</span></td>
+          <td><span class="num" style="font-size:18px;color:var(--accent)">${qty}</span></td>
+          <td><span class="badge ${priority[1]}">${priority[0]}</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px;">${parts.length} parts need reordering · Order quantities based on 30-day supply + ${GROWTH_RATE*100-100}% growth</div>`;
 }
 
-function renderCatalogue() {
-  const search=(document.getElementById('cat-search')?.value||'').toLowerCase();
-  const brand=document.getElementById('cat-brand')?.value||'';
-  const type=document.getElementById('cat-type')?.value||'';
-  const sort=document.getElementById('cat-sort')?.value||'stock-desc';
+// ═══════════════════════════════════
+// 7-DAY RUNOUT
+// ═══════════════════════════════════
+function renderRunout() {
+  const parts = allParts.filter(p => p.daily > 0 && p.daysRemaining <= 7)
+    .sort((a, b) => a.daysRemaining - b.daysRemaining);
 
-  let parts=allParts.filter(p=>{
-    const ms=!search||(p.partType||'').toLowerCase().includes(search)||(p.model||'').toLowerCase().includes(search)||(p.brand||'').toLowerCase().includes(search)||(p.sku||'').toLowerCase().includes(search);
-    return ms&&(!brand||p.brand===brand)&&(!type||p.partType===type);
+  if (!parts.length) {
+    document.getElementById('runout-content').innerHTML = `<div class="alert alert-green">No parts running out in the next 7 days.</div>`;
+    return;
+  }
+
+  document.getElementById('runout-content').innerHTML = `
+    <div class="alert alert-red" style="margin-bottom:16px"><strong>${parts.length} parts</strong> will run out within 7 days at current usage rate</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Daily Rate</th><th>Runs Out</th><th>Action</th></tr></thead>
+      <tbody>${parts.map(p => {
+        const runoutDate = new Date(now.getTime() + p.daysRemaining * 24 * 60 * 60 * 1000);
+        const dateStr = runoutDate.toLocaleDateString('en-ZA', { weekday: 'short', month: 'short', day: 'numeric' });
+        return `<tr>
+          <td><strong>${p.partType}</strong></td>
+          <td style="color:var(--text2)">${p.model}</td>
+          <td>${p.brand ? `<span class="badge badge-blue">${p.brand}</span>` : '—'}</td>
+          <td><span class="num" style="color:var(--accent2)">${p.inStock}</span></td>
+          <td class="num">${p.daily.toFixed(2)}/day</td>
+          <td><span class="num" style="color:var(--accent2)">${p.daysRemaining === 0 ? 'TODAY' : dateStr}</span></td>
+          <td><span class="badge ${p.daysRemaining <= 2 ? 'badge-red' : 'badge-yellow'}">${p.daysRemaining <= 2 ? 'ORDER NOW' : 'ORDER SOON'}</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ═══════════════════════════════════
+// TOP MOVERS
+// ═══════════════════════════════════
+function renderTopMovers() {
+  const moversTable = (parts, sortKey) => {
+    if (!parts.length) return '<div class="empty"><div class="empty-title">No data</div></div>';
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>Part Type</th><th>Model</th><th>Brand</th><th>Sold/Month</th><th>Daily Rate</th><th>Weekly Rate</th><th>In Stock</th><th>Days Cover</th></tr></thead>
+      <tbody>${parts.map((p, i) => `<tr>
+        <td class="sku">${i+1}</td>
+        <td><strong>${p.partType}</strong></td>
+        <td style="color:var(--text2)">${p.model}</td>
+        <td>${p.brand ? `<span class="badge badge-blue">${p.brand}</span>` : '—'}</td>
+        <td><span class="num" style="color:var(--accent4)">${p.thisMonth}</span></td>
+        <td><span class="num" style="color:var(--accent)">${p.daily.toFixed(2)}</span></td>
+        <td><span class="num" style="color:var(--accent)">${p.weekly.toFixed(1)}</span></td>
+        <td><span class="num" style="color:var(--accent3)">${p.inStock}</span></td>
+        <td><span class="num" style="color:${p.daysRemaining<=7?'var(--accent2)':p.daysRemaining<=14?'var(--accent4)':'var(--accent3)'}">${p.daysRemaining===999?'∞':p.daysRemaining+'d'}</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  };
+
+  const bySold = [...allParts].filter(p => p.thisMonth > 0).sort((a, b) => b.thisMonth - a.thisMonth).slice(0, 20);
+  const byDaily = [...allParts].filter(p => p.daily > 0).sort((a, b) => b.daily - a.daily).slice(0, 20);
+  const byCover = [...allParts].filter(p => p.daily > 0).sort((a, b) => a.daysRemaining - b.daysRemaining).slice(0, 20);
+
+  document.getElementById('top-sold-table').innerHTML = moversTable(bySold);
+  document.getElementById('top-daily-table').innerHTML = moversTable(byDaily);
+  document.getElementById('top-cover-table').innerHTML = moversTable(byCover);
+}
+
+// ═══════════════════════════════════
+// CATALOGUE
+// ═══════════════════════════════════
+function renderCatalogue() {
+  const search = (document.getElementById('cat-search')?.value || '').toLowerCase();
+  const brand = document.getElementById('cat-brand')?.value || '';
+  const type = document.getElementById('cat-type')?.value || '';
+  const sort = document.getElementById('cat-sort')?.value || 'sold-desc';
+
+  let parts = allParts.filter(p => {
+    const ms = !search || (p.partType||'').toLowerCase().includes(search) || (p.model||'').toLowerCase().includes(search) || (p.brand||'').toLowerCase().includes(search) || (p.sku||'').toLowerCase().includes(search);
+    return ms && (!brand || p.brand === brand) && (!type || p.partType === type);
   });
 
-  if(sort==='stock-desc') parts.sort((a,b)=>b.inStock-a.inStock);
-  else if(sort==='stock-asc') parts.sort((a,b)=>a.inStock-b.inStock);
-  else if(sort==='used-desc') parts.sort((a,b)=>b.usedMonth-a.usedMonth);
-  else parts.sort((a,b)=>(a.partType||'').localeCompare(b.partType||''));
+  if (sort === 'stock-desc') parts.sort((a, b) => b.inStock - a.inStock);
+  else if (sort === 'stock-asc') parts.sort((a, b) => a.inStock - b.inStock);
+  else if (sort === 'sold-desc') parts.sort((a, b) => b.thisMonth - a.thisMonth);
+  else if (sort === 'daily-desc') parts.sort((a, b) => b.daily - a.daily);
+  else if (sort === 'cover-asc') parts.sort((a, b) => a.daysRemaining - b.daysRemaining);
+  else parts.sort((a, b) => (a.partType||'').localeCompare(b.partType||''));
 
-  const tbody=document.getElementById('cat-body');
-  if(!parts.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-title">No parts match</div></div></td></tr>';return;}
-  tbody.innerHTML=parts.map(p=>{
-    const sc=p.inStock===0?'badge-red':p.inStock<=10?'badge-yellow':'badge-green';
-    const sl=p.inStock===0?'OUT':p.inStock<=10?'LOW':'OK';
+  const tbody = document.getElementById('cat-body');
+  if (!parts.length) { tbody.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="empty-title">No parts match</div></div></td></tr>'; return; }
+
+  tbody.innerHTML = parts.map(p => {
+    const cover = p.daysRemaining === 999 ? '∞' : p.daysRemaining + 'd';
+    const coverColor = p.daysRemaining <= 7 ? 'var(--accent2)' : p.daysRemaining <= 14 ? 'var(--accent4)' : 'var(--accent3)';
+    const status = p.inStock === 0 ? ['OUT', 'badge-red'] : p.daysRemaining <= 7 ? ['LOW', 'badge-yellow'] : ['OK', 'badge-green'];
     return `<tr>
-      <td class="sku">${p.sku||'—'}</td>
       <td><strong>${p.partType||'—'}</strong></td>
       <td style="color:var(--text2)">${p.model||'—'}</td>
-      <td>${p.brand?`<span class="badge badge-blue">${p.brand}</span>`:'—'}</td>
-      <td><span style="font-family:var(--mono);color:var(--accent3)">${p.inStock}</span></td>
-      <td><span style="font-family:var(--mono);color:var(--accent4)">${p.usedMonth}</span></td>
-      <td class="sku">${p.totalCount.toLocaleString()}</td>
-      <td><span class="badge ${sc}">${sl}</span></td>
+      <td>${p.brand ? `<span class="badge badge-blue">${p.brand}</span>` : '—'}</td>
+      <td><span class="num" style="color:var(--accent3)">${p.inStock}</span></td>
+      <td><span class="num" style="color:var(--accent4)">${p.thisMonth}</span></td>
+      <td class="num">${p.daily.toFixed(2)}/d</td>
+      <td class="num">${p.weekly.toFixed(1)}/wk</td>
+      <td><span class="num" style="color:${coverColor}">${cover}</span></td>
+      <td><span class="badge ${status[1]}">${status[0]}</span></td>
     </tr>`;
   }).join('');
-  document.getElementById('cat-count').textContent=`Showing ${parts.length} of ${allParts.length} SKUs`;
+  document.getElementById('cat-count').textContent = `Showing ${parts.length} of ${allParts.length} SKUs`;
 }
 
-function generateForecast() {
-  if(!allParts.length){alert('Load data first.');return;}
-  const month=new Date().getMonth(), growthMult=1.075;
-  const seasonMult=month===11?1.4:month===0?0.75:(month===5||month===6)?1.2:month===9?1.15:1.0;
-  const catW={'battery':1.6,'lcd':1.5,'screen':1.5,'oled':1.5,'soft oled':1.5,'charging dock':1.4,'charging port':1.4,'flex':1.2,'camera':1.1,'rear housing':0.9,'back glass':0.9,'proximity':1.0,'speaker':0.8};
-  const brandW={'apple':1.5,'samsung':1.4,'xiaomi':1.2,'huawei':1.1};
-  const saAlerts=[
-    {type:'alert-blue',msg:'LOAD SHEDDING — Battery and charging IC demand elevated year-round.'},
-    {type:'alert-blue',msg:`GROWTH TARGET — 7.5% MoM applied. Seasonal factor: ${seasonMult.toFixed(2)}×`}
+// ═══════════════════════════════════
+// DEAD STOCK
+// ═══════════════════════════════════
+function renderDeadStock() {
+  const dead = allParts.filter(p => p.thisMonth === 0 && p.lastMonth === 0 && p.inStock > 0)
+    .sort((a, b) => b.inStock - a.inStock);
+
+  if (!dead.length) {
+    document.getElementById('deadstock-content').innerHTML = `<div class="alert alert-green">No dead stock detected. All parts with stock have had recent sales.</div>`;
+    return;
+  }
+
+  const totalDeadUnits = dead.reduce((a, p) => a + p.inStock, 0);
+
+  document.getElementById('deadstock-content').innerHTML = `
+    <div class="alert alert-yellow" style="margin-bottom:16px"><strong>${dead.length} SKUs</strong> with ${totalDeadUnits} total units — zero sales this month and last month</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Total Count</th><th>Last Month Sales</th><th>Recommendation</th></tr></thead>
+      <tbody>${dead.map(p => `<tr>
+        <td><strong>${p.partType||'—'}</strong></td>
+        <td style="color:var(--text2)">${p.model||'—'}</td>
+        <td>${p.brand ? `<span class="badge badge-blue">${p.brand}</span>` : '—'}</td>
+        <td><span class="num" style="color:var(--accent4)">${p.inStock}</span></td>
+        <td class="sku">${p.totalCount.toLocaleString()}</td>
+        <td><span class="num" style="color:var(--text3)">0</span></td>
+        <td><span class="badge badge-yellow">REVIEW</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px;">Consider returning to supplier, discounting, or bundling with active repairs</div>`;
+}
+
+// ═══════════════════════════════════
+// FORECAST
+// ═══════════════════════════════════
+function renderForecast() {
+  const month = now.getMonth();
+  const seasonMult = month === 11 ? 1.4 : month === 0 ? 0.75 : (month === 5 || month === 6) ? 1.2 : 1.0;
+
+  const saAlerts = [
+    { type: 'alert-blue', msg: `GROWTH TARGET — ${(GROWTH_RATE-1)*100}% MoM applied · Seasonal factor: ${seasonMult.toFixed(2)}× · Lead time: ${LEAD_TIME_DAYS} days` },
+    { type: 'alert-blue', msg: 'LOAD SHEDDING — Battery and charging parts weighted +60%. Keep elevated buffer on these categories.' },
   ];
-  if(month===0) saAlerts.unshift({type:'alert-yellow',msg:'JANUARY SLOWDOWN — Reduce orders 20%. Focus on fast movers only.'});
-  if(month===11) saAlerts.unshift({type:'alert-red',msg:'DECEMBER — Black Friday afterwave. Elevate battery and screen orders.'});
-  document.getElementById('sa-alerts').innerHTML=saAlerts.map(a=>`<div class="alert ${a.type}">${a.msg}</div>`).join('');
+  if (month === 0) saAlerts.unshift({ type: 'alert-yellow', msg: 'JANUARY SLOWDOWN — Reduce order sizes 20-25%.' });
+  if (month === 11) saAlerts.unshift({ type: 'alert-red', msg: 'DECEMBER — Black Friday afterwave. Elevate battery and screen orders.' });
 
-  const forecast=allParts.map(p=>{
-    const pl=(p.partType||'').toLowerCase(), bl=(p.brand||'').toLowerCase();
-    let cw=1.0; for(const[k,w] of Object.entries(catW)){if(pl.includes(k)){cw=w;break;}}
-    let bw=1.0; for(const[k,w] of Object.entries(brandW)){if(bl.includes(k)){bw=w;break;}}
-    const base=p.usedMonth>0?p.usedMonth:Math.max(3,Math.round(p.totalCount*0.05));
-    const recommended=Math.ceil((base/4)*cw*bw*growthMult*seasonMult);
-    const priority=p.inStock===0?'CRITICAL':p.inStock<recommended*0.5?'HIGH':p.inStock<recommended?'MED':'LOW';
-    return{...p,cw,bw,recommended,priority};
-  }).sort((a,b)=>{const o={CRITICAL:0,HIGH:1,MED:2,LOW:3};return o[a.priority]-o[b.priority]||b.recommended-a.recommended;});
+  document.getElementById('forecast-sa-alerts').innerHTML = saAlerts.map(a => `<div class="alert ${a.type}">${a.msg}</div>`).join('');
 
-  const critical=forecast.filter(p=>p.priority==='CRITICAL').length;
-  const high=forecast.filter(p=>p.priority==='HIGH').length;
+  const catW = { 'battery':1.6,'lcd':1.5,'screen':1.5,'oled':1.5,'soft oled':1.5,'charging dock':1.4,'charging port':1.4,'flex':1.2,'camera':1.1,'rear housing':0.9,'back glass':0.9 };
+  const brandW = { 'apple':1.5,'samsung':1.4,'xiaomi':1.2,'huawei':1.1 };
 
-  document.getElementById('forecast-content').innerHTML=`
-    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <div class="alert alert-red" style="flex:1;margin:0"><strong>${critical} CRITICAL</strong> — Zero stock, order immediately</div>
-      <div class="alert alert-yellow" style="flex:1;margin:0"><strong>${high} HIGH</strong> — Below 50% of recommended level</div>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Used/Mo</th><th>Weight</th><th>Rec. Order</th><th>Priority</th></tr></thead>
-      <tbody>${forecast.map(p=>`<tr>
-        <td><strong>${p.partType||'—'}</strong></td>
-        <td style="color:var(--text2)">${p.model||'—'}</td>
-        <td>${p.brand?`<span class="badge badge-blue">${p.brand}</span>`:'—'}</td>
-        <td><span style="font-family:var(--mono);color:${p.inStock===0?'var(--accent2)':p.inStock<=10?'var(--accent4)':'var(--accent3)'}">${p.inStock}</span></td>
-        <td><span style="font-family:var(--mono);color:var(--accent4)">${p.usedMonth}</span></td>
-        <td class="sku">${(p.cw*p.bw).toFixed(2)}×</td>
-        <td><span class="order-qty">${p.recommended}</span></td>
-        <td><span class="badge ${p.priority==='CRITICAL'||p.priority==='HIGH'?'badge-red':p.priority==='MED'?'badge-yellow':'badge-green'}">${p.priority}</span></td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
-}
-
-function updateAlertBadge() {
-  const count=allParts.filter(p=>p.inStock<=10).length;
-  const badge=document.getElementById('alert-badge');
-  badge.textContent=count; badge.style.display=count>0?'inline-block':'none';
-}
-
-function renderAlerts() {
-  const threshold=parseInt(document.getElementById('alert-threshold')?.value||10);
-  const brand=document.getElementById('alert-brand')?.value||'';
-  let parts=allParts.filter(p=>p.inStock<=threshold&&(!brand||p.brand===brand)).sort((a,b)=>a.inStock-b.inStock);
-  if(!parts.length){document.getElementById('alerts-content').innerHTML=`<div class="alert alert-green">No parts below ${threshold} units. Stock levels healthy.</div>`;return;}
-  const zero=parts.filter(p=>p.inStock===0).length;
-  document.getElementById('alerts-content').innerHTML=`
-    ${zero?`<div class="alert alert-red" style="margin-bottom:16px"><strong>${zero} PARTS OUT OF STOCK</strong> — Immediate reorder required</div>`:''}
-    <div class="table-wrap"><table>
-      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Used/Month</th><th>Action</th></tr></thead>
-      <tbody>${parts.map(p=>`<tr>
-        <td><strong>${p.partType||'—'}</strong></td>
-        <td style="color:var(--text2)">${p.model||'—'}</td>
-        <td>${p.brand?`<span class="badge badge-blue">${p.brand}</span>`:'—'}</td>
-        <td><span style="font-family:var(--mono);font-size:16px;color:${p.inStock===0?'var(--accent2)':'var(--accent4)'}">${p.inStock}</span></td>
-        <td><span style="font-family:var(--mono)">${p.usedMonth}</span></td>
-        <td><span class="badge ${p.inStock===0?'badge-red':'badge-yellow'}">${p.inStock===0?'ORDER NOW':'REORDER'}</span></td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
-}
-
-function renderTrends() {
-  if(!allParts.length)return;
-  const totalUsed=allParts.reduce((a,p)=>a+p.usedMonth,0);
-  const totalStock=allParts.reduce((a,p)=>a+p.inStock,0);
-  const noUsage=allParts.filter(p=>p.usedMonth===0).length;
-  const velocity=totalStock>0?((totalUsed/(totalStock+totalUsed))*100).toFixed(1):0;
-  const byBrand={}, byType={};
-  allParts.forEach(p=>{
-    const b=p.brand||'Unknown'; byBrand[b]=(byBrand[b]||0)+p.usedMonth;
-    const t=p.partType||'Unknown'; byType[t]=(byType[t]||0)+p.usedMonth;
+  const forecast = allParts.map(p => {
+    const pl = (p.partType||'').toLowerCase(), bl = (p.brand||'').toLowerCase();
+    let cw = 1.0; for (const [k, w] of Object.entries(catW)) { if (pl.includes(k)) { cw = w; break; } }
+    let bw = 1.0; for (const [k, w] of Object.entries(brandW)) { if (bl.includes(k)) { bw = w; break; } }
+    const baseMonthly = p.last30 > 0 ? p.last30 : (p.usedMonth > 0 ? p.usedMonth : 0);
+    if (baseMonthly === 0) return null;
+    const recommended = Math.ceil(baseMonthly * GROWTH_RATE * seasonMult * cw * bw);
+    const toOrder = Math.max(0, recommended - p.inStock);
+    const priority = p.inStock === 0 ? 'CRITICAL' : p.daysRemaining <= 3 ? 'CRITICAL' : p.daysRemaining <= 7 ? 'HIGH' : toOrder > 0 ? 'MED' : 'OK';
+    return { ...p, cw, bw, recommended, toOrder, priority };
+  }).filter(Boolean).sort((a, b) => {
+    const o = { CRITICAL:0, HIGH:1, MED:2, OK:3 };
+    return o[a.priority] - o[b.priority] || b.toOrder - a.toOrder;
   });
-  const brandU=Object.entries(byBrand).sort((a,b)=>b[1]-a[1]), maxBU=brandU[0]?.[1]||1;
-  const typeU=Object.entries(byType).sort((a,b)=>b[1]-a[1]).slice(0,10), maxTU=typeU[0]?.[1]||1;
-  const topUsed=[...allParts].filter(p=>p.usedMonth>0).sort((a,b)=>b.usedMonth-a.usedMonth).slice(0,20);
 
-  document.getElementById('trends-content').innerHTML=`
-    <div class="three-col" style="margin-bottom:20px">
-      <div class="stat blue"><div class="stat-label">Total Used Feb</div><div class="stat-val blue">${totalUsed.toLocaleString()}</div><div class="stat-sub">Units allocated</div></div>
-      <div class="stat yellow"><div class="stat-label">Stock Velocity</div><div class="stat-val yellow">${velocity}%</div><div class="stat-sub">Used/(stock+used)</div></div>
-      <div class="stat red"><div class="stat-label">Zero Movement</div><div class="stat-val red">${noUsage}</div><div class="stat-sub">No usage this month</div></div>
+  const critical = forecast.filter(p => p.priority === 'CRITICAL').length;
+  const high = forecast.filter(p => p.priority === 'HIGH').length;
+
+  document.getElementById('forecast-content').innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="alert alert-red" style="flex:1;margin:0"><strong>${critical} CRITICAL</strong> — Order immediately</div>
+      <div class="alert alert-yellow" style="flex:1;margin:0"><strong>${high} HIGH</strong> — Order this week</div>
     </div>
-    <div class="two-col section-gap">
-      <div class="card"><div class="card-title">Usage by Brand</div>
-        ${brandU.map(([b,c])=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>${b}</span><span style="font-family:var(--mono);font-size:11px;color:var(--accent4)">${c}</span></div><div class="progress"><div class="progress-fill" style="width:${(c/maxBU*100).toFixed(0)}%;background:var(--accent4)"></div></div></div>`).join('')}
-      </div>
-      <div class="card"><div class="card-title">Usage by Part Type</div>
-        ${typeU.map(([t,c])=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>${t}</span><span style="font-family:var(--mono);font-size:11px;color:var(--accent)">${c}</span></div><div class="progress"><div class="progress-fill" style="width:${(c/maxTU*100).toFixed(0)}%;background:var(--accent)"></div></div></div>`).join('')}
-      </div>
-    </div>
-    <div class="card"><div class="card-title">Top 20 Most Used — Feb 2026</div>
-      <div class="table-wrap" style="border:none;margin-top:12px"><table>
-        <thead><tr><th>#</th><th>Part Type</th><th>Model</th><th>Brand</th><th>Used/Mo</th><th>In Stock</th><th>Weeks Cover</th></tr></thead>
-        <tbody>${topUsed.map((p,i)=>{
-          const wc=p.usedMonth>0?(p.inStock/(p.usedMonth/4)).toFixed(1):'∞';
-          const cc=parseFloat(wc)<2?'var(--accent2)':parseFloat(wc)<4?'var(--accent4)':'var(--accent3)';
-          return `<tr><td class="sku">${i+1}</td><td><strong>${p.partType||'—'}</strong></td><td style="color:var(--text2)">${p.model||'—'}</td><td>${p.brand?`<span class="badge badge-blue">${p.brand}</span>`:'—'}</td><td><span style="font-family:var(--mono);color:var(--accent4)">${p.usedMonth}</span></td><td><span style="font-family:var(--mono);color:var(--accent3)">${p.inStock}</span></td><td><span style="font-family:var(--mono);color:${cc}">${wc}w</span></td></tr>`;
-        }).join('')}</tbody>
-      </table></div>
-    </div>`;
-}
-
-function renderMargins() {
-  if(!allParts.length)return;
-  const brandStock={}, brandUsed={};
-  allParts.forEach(p=>{const b=p.brand||'Unknown';brandStock[b]=(brandStock[b]||0)+p.inStock;brandUsed[b]=(brandUsed[b]||0)+p.usedMonth;});
-  const totalStock=allParts.reduce((a,p)=>a+p.inStock,0), totalUsed=allParts.reduce((a,p)=>a+p.usedMonth,0);
-  const brandTable=Object.entries(brandStock).map(([b,s])=>({brand:b,stock:s,used:brandUsed[b]||0,sp:totalStock>0?(s/totalStock*100).toFixed(1):0,up:totalUsed>0?((brandUsed[b]||0)/totalUsed*100).toFixed(1):0})).sort((a,b)=>b.stock-a.stock);
-  const typeV={};
-  allParts.forEach(p=>{const t=p.partType||'Unknown';if(!typeV[t])typeV[t]={stock:0,used:0};typeV[t].stock+=p.inStock;typeV[t].used+=p.usedMonth;});
-  const velTable=Object.entries(typeV).map(([t,d])=>({type:t,...d,ratio:d.stock>0?(d.used/d.stock*100).toFixed(1):0})).sort((a,b)=>parseFloat(b.ratio)-parseFloat(a.ratio));
-
-  document.getElementById('margins-content').innerHTML=`
-    <div class="alert alert-blue" style="margin-bottom:20px">Stock velocity analysis — high Used/Stock ratio = fastest movers, need most aggressive buffer stocking.</div>
-    <div class="two-col section-gap">
-      <div class="card"><div class="card-title">Stock Concentration by Brand</div>
-        <div class="table-wrap" style="border:none;margin-top:8px"><table>
-          <thead><tr><th>Brand</th><th>In Stock</th><th>Stock %</th><th>Used/Mo</th><th>Used %</th></tr></thead>
-          <tbody>${brandTable.map(b=>`<tr><td><span class="badge badge-blue">${b.brand}</span></td><td><span style="font-family:var(--mono);color:var(--accent3)">${b.stock}</span></td><td class="sku">${b.sp}%</td><td><span style="font-family:var(--mono);color:var(--accent4)">${b.used}</span></td><td class="sku">${b.up}%</td></tr>`).join('')}</tbody>
-        </table></div>
-      </div>
-      <div class="card"><div class="card-title">Part Type Velocity</div>
-        <div class="table-wrap" style="border:none;margin-top:8px"><table>
-          <thead><tr><th>Part Type</th><th>Stock</th><th>Used/Mo</th><th>Velocity</th><th>Rating</th></tr></thead>
-          <tbody>${velTable.map(v=>{const r=parseFloat(v.ratio);const rating=r>30?'🔥 FAST':r>10?'▲ MED':'— SLOW';const rc=r>30?'var(--accent2)':r>10?'var(--accent4)':'var(--text3)';return`<tr><td>${v.type}</td><td><span style="font-family:var(--mono);color:var(--accent3)">${v.stock}</span></td><td><span style="font-family:var(--mono);color:var(--accent4)">${v.used}</span></td><td class="sku">${v.ratio}%</td><td style="color:${rc};font-family:var(--mono);font-size:11px">${rating}</td></tr>`;}).join('')}</tbody>
-        </table></div>
-      </div>
-    </div>`;
+    <div class="table-wrap"><table>
+      <thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Sold/30d</th><th>Daily</th><th>SA Weight</th><th>Rec 30d Supply</th><th>To Order</th><th>Priority</th></tr></thead>
+      <tbody>${forecast.map(p => `<tr>
+        <td><strong>${p.partType||'—'}</strong></td>
+        <td style="color:var(--text2)">${p.model||'—'}</td>
+        <td>${p.brand?`<span class="badge badge-blue">${p.brand}</span>`:'—'}</td>
+        <td><span class="num" style="color:${p.inStock===0?'var(--accent2)':p.daysRemaining<=7?'var(--accent4)':'var(--accent3)'}">${p.inStock}</span></td>
+        <td><span class="num" style="color:var(--accent4)">${p.last30}</span></td>
+        <td class="sku">${p.daily.toFixed(2)}/d</td>
+        <td class="sku">${(p.cw*p.bw).toFixed(2)}×</td>
+        <td><span class="num" style="color:var(--accent)">${p.recommended}</span></td>
+        <td><span class="num" style="font-size:18px;color:var(--accent)">${p.toOrder}</span></td>
+        <td><span class="badge ${p.priority==='CRITICAL'?'badge-red':p.priority==='HIGH'?'badge-red':p.priority==='MED'?'badge-yellow':'badge-green'}">${p.priority}</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
 }
 </script>
 </body>
