@@ -688,83 +688,104 @@ function renderDeadStock() {
 // FORECAST
 // ═══════════════════════════════════
 function renderForecast() {
+  const MIN_SALES = 5;
+  const ORDER_DAYS = 7;
   const month = now.getMonth();
   const seasonMult = month === 11 ? 1.4 : month === 0 ? 0.75 : (month === 5 || month === 6) ? 1.2 : 1.0;
+  const catW = { 'battery':1.6,'lcd':1.5,'screen':1.5,'oled':1.5,'soft oled':1.5,'charging dock':1.4,'charging port':1.4,'flex':1.2,'camera':1.1 };
 
-  const saAlerts = [
-    { type: 'alert-blue', msg: `GROWTH TARGET — ${(GROWTH_RATE-1)*100}% MoM applied · Seasonal factor: ${seasonMult.toFixed(2)}× · Lead time: ${LEAD_TIME_DAYS} days` },
-    { type: 'alert-blue', msg: 'LOAD SHEDDING — Battery and charging parts weighted +60%. Keep elevated buffer on these categories.' },
-  ];
-  if (month === 0) saAlerts.unshift({ type: 'alert-yellow', msg: 'JANUARY SLOWDOWN — Reduce order sizes 20-25%.' });
-  if (month === 11) saAlerts.unshift({ type: 'alert-red', msg: 'DECEMBER — Black Friday afterwave. Elevate battery and screen orders.' });
-
-  document.getElementById('forecast-sa-alerts').innerHTML = saAlerts.map(a => `<div class="alert ${a.type}">${a.msg}</div>`).join('');
-
-  const catW = { 'battery':1.6,'lcd':1.5,'screen':1.5,'oled':1.5,'soft oled':1.5,'charging dock':1.4,'charging port':1.4,'flex':1.2,'camera':1.1,'rear housing':0.9,'back glass':0.9 };
-  const brandW = { 'apple':1.5,'samsung':1.4,'xiaomi':1.2,'huawei':1.1 };
-
-  const forecast = allParts.map(p => {
-    const pl = (p.partType||'').toLowerCase(), bl = (p.brand||'').toLowerCase();
-    let cw = 1.0; for (const [k, w] of Object.entries(catW)) { if (pl.includes(k)) { cw = w; break; } }
-    let bw = 1.0; for (const [k, w] of Object.entries(brandW)) { if (bl.includes(k)) { bw = w; break; } }
-    const baseMonthly = p.last30 > 0 ? p.last30 : 0;
-    if (baseMonthly === 0) return null; // Only forecast parts with real recent sales
-    const recommended = Math.ceil(baseMonthly * GROWTH_RATE * seasonMult * cw * bw);
-    const toOrder = Math.max(0, recommended - p.inStock);
-    const priority = p.inStock === 0 ? 'CRITICAL' : p.daysRemaining <= 3 ? 'CRITICAL' : p.daysRemaining <= 7 ? 'HIGH' : toOrder > 0 ? 'MED' : 'OK';
-    return { ...p, cw, bw, recommended, toOrder, priority };
-  }).filter(Boolean).sort((a, b) => {
-    const o = { CRITICAL:0, HIGH:1, MED:2, OK:3 };
-    return o[a.priority] - o[b.priority] || b.toOrder - a.toOrder;
-  });
-
-  // Group by Brand + Part Type
-  // Group by Brand + Part Type, keep models listed
-  const grouped = {};
-  for (const p of forecast) {
-    const brand = p.brand || 'Unknown';
-    const gkey = `${brand}|||${p.partType}`;
-    if (!grouped[gkey]) grouped[gkey] = { brand, partType: p.partType, models: [], inStock: 0, sold30: 0, toOrder: 0, priority: 'OK' };
-    const g = grouped[gkey];
-    g.inStock += p.inStock;
-    g.sold30 += p.last30;
-    g.toOrder += p.toOrder;
-    if (p.model && !g.models.includes(p.model)) g.models.push(p.model);
-    const order = { CRITICAL:0, HIGH:1, MED:2, OK:3 };
-    if (order[p.priority] < order[g.priority]) g.priority = p.priority;
+  const eligible = allParts.filter(p => p.last30 >= MIN_SALES);
+  if (!eligible.length) {
+    document.getElementById('forecast-content').innerHTML = '<div class="empty"><div class="empty-title">No parts with 5+ sales in last 30 days</div></div>';
+    return;
   }
 
-  const groupedArr = Object.values(grouped)
-    .filter(g => g.toOrder > 0)
-    .sort((a, b) => {
-      const o = { CRITICAL:0, HIGH:1, MED:2, OK:3 };
-      return o[a.priority] - o[b.priority] || b.toOrder - a.toOrder;
-    });
+  const orderList = eligible.map(p => {
+    const pl = (p.partType||'').toLowerCase();
+    let cw = 1.0;
+    for (const [k, w] of Object.entries(catW)) { if (pl.includes(k)) { cw = w; break; } }
+    const dailyRate = p.last30 / 30;
+    const weeklyNeed = dailyRate * ORDER_DAYS * GROWTH_RATE * seasonMult * cw;
+    const safeBuffer = dailyRate * LEAD_TIME_DAYS;
+    const totalNeed = Math.ceil(weeklyNeed + safeBuffer);
+    const toOrder = Math.max(0, totalNeed - p.inStock);
+    const daysAfterOrder = dailyRate > 0 ? Math.floor((p.inStock + toOrder) / dailyRate) : 999;
+    return { ...p, dailyRate, toOrder, daysAfterOrder };
+  }).filter(p => p.toOrder > 0).sort((a, b) => b.last30 - a.last30);
 
-  const gcritical = groupedArr.filter(g => g.priority === 'CRITICAL').length;
-  const ghigh = groupedArr.filter(g => g.priority === 'HIGH').length;
-  const totalToOrder = groupedArr.reduce((a, g) => a + g.toOrder, 0);
+  if (!orderList.length) {
+    document.getElementById('forecast-content').innerHTML = '<div class="alert alert-green">All fast-moving parts are well stocked for the week ahead. No orders needed.</div>';
+    return;
+  }
 
-  document.getElementById('forecast-content').innerHTML = `
-    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-      <div class="alert alert-red" style="flex:1;margin:0"><strong>${gcritical} CRITICAL</strong> — Order immediately</div>
-      <div class="alert alert-yellow" style="flex:1;margin:0"><strong>${ghigh} HIGH</strong> — Order this week</div>
-      <div class="alert alert-blue" style="flex:1;margin:0"><strong>${totalToOrder} total units</strong> across ${groupedArr.length} categories</div>
-    </div>
-    <div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-bottom:12px;">Only showing parts with confirmed sales in last 30 days</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Brand</th><th>Part Type</th><th>Models</th><th>In Stock</th><th>Sold/30d</th><th>To Order</th><th>Priority</th></tr></thead>
-      <tbody>${groupedArr.map(g => `<tr>
-        <td>${g.brand !== 'Unknown' ? `<span class="badge badge-blue">${g.brand}</span>` : '<span style="color:var(--text3)">—</span>'}</td>
-        <td><strong>${g.partType||'—'}</strong></td>
-        <td style="color:var(--text2);font-size:12px;max-width:280px">${g.models.join(', ')}</td>
-        <td><span class="num" style="color:var(--accent3)">${g.inStock}</span></td>
-        <td><span class="num" style="color:var(--accent4)">${g.sold30}</span></td>
-        <td><span class="num" style="font-size:22px;color:var(--accent)">${g.toOrder}</span></td>
-        <td><span class="badge ${g.priority==='CRITICAL'?'badge-red':g.priority==='HIGH'?'badge-red':g.priority==='MED'?'badge-yellow':'badge-green'}">${g.priority}</span></td>
-      </tr>`).join('')}</tbody>
-    </table></div>
-    <div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px;">Quantities based on 30-day sales velocity + 7.5% growth · ${LEAD_TIME_DAYS}-day SA lead time buffer included</div>`;
+  // Group by Brand
+  const byBrand = {};
+  for (const p of orderList) {
+    const brand = p.brand || 'Unknown';
+    if (!byBrand[brand]) byBrand[brand] = [];
+    byBrand[brand].push(p);
+  }
+  const brandsSorted = Object.entries(byBrand).sort((a, b) =>
+    b[1].reduce((s,p)=>s+p.toOrder,0) - a[1].reduce((s,p)=>s+p.toOrder,0)
+  );
+
+  const totalUnits = orderList.reduce((a, p) => a + p.toOrder, 0);
+  const weekOf = now.toLocaleDateString('en-ZA', { day:'numeric', month:'long', year:'numeric' });
+
+  let html = `
+    <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:18px;border-radius:2px;margin-bottom:24px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px">Weekly Order Recommendation</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Week of ${weekOf}</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.6">
+        Based on your last 30 days of sales, you need to order <strong style="color:var(--text)">${totalUnits} units</strong> across <strong style="color:var(--text)">${orderList.length} parts</strong> to cover the next 7 days.
+        Only parts sold 5 or more times in the last 30 days are included. Each quantity includes a ${LEAD_TIME_DAYS}-day supplier lead time buffer.
+      </div>
+    </div>`;
+
+  for (const [brand, parts] of brandsSorted) {
+    const brandTotal = parts.reduce((s, p) => s + p.toOrder, 0);
+    const brandSold = parts.reduce((s, p) => s + p.last30, 0);
+    const fastestMover = [...parts].sort((a,b) => b.last30 - a.last30)[0];
+
+    html += `
+      <div class="card section-gap">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div>
+            <span class="badge badge-blue" style="font-size:12px;padding:4px 14px;margin-bottom:8px;display:inline-block">${brand}</span>
+            <div style="color:var(--text2);font-size:13px">${brand} is one of your active brands — <strong style="color:var(--text)">${parts.length} part${parts.length>1?'s':''}</strong> need restocking, totalling <strong style="color:var(--accent)">${brandTotal} units</strong>. Your fastest ${brand} mover is the <strong style="color:var(--text)">${fastestMover.model} ${fastestMover.partType}</strong> with ${fastestMover.last30} sales in the last 30 days.</div>
+          </div>
+          <div style="text-align:right;min-width:80px;margin-left:16px">
+            <div style="font-family:var(--mono);font-size:26px;color:var(--accent);line-height:1">${brandTotal}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">units</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${parts.map(p => {
+            const urgency = p.daysRemaining <= 3 ? 'var(--accent2)' : p.daysRemaining <= 7 ? 'var(--accent4)' : 'var(--accent3)';
+            const urgencyText = p.daysRemaining === 0 ? 'OUT OF STOCK' : p.daysRemaining <= 3 ? `Runs out in ${p.daysRemaining}d — urgent` : p.daysRemaining <= 7 ? `Runs out in ${p.daysRemaining}d` : `${p.inStock} left in stock`;
+            const coverText = p.daysAfterOrder >= 999 ? 'covers indefinitely' : `should last ${p.daysAfterOrder} days after ordering`;
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg3);border-radius:2px;border:1px solid var(--border)">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;margin-bottom:3px">${p.model} — ${p.partType}</div>
+                <div style="font-size:12px;color:var(--text2)">Order <strong style="color:var(--accent);font-family:var(--mono);font-size:15px">${p.toOrder}</strong> units · ${coverText} · <span style="color:${urgency}">${urgencyText}</span></div>
+              </div>
+              <div style="text-align:right;min-width:60px;margin-left:12px">
+                <div style="font-family:var(--mono);font-size:28px;font-weight:500;color:var(--accent);line-height:1">${p.toOrder}</div>
+                <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:1px">QTY</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  html += `<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;line-height:1.8">
+    ORDER NOTES · Quantities cover 7 days + ${LEAD_TIME_DAYS}-day lead buffer · ${(GROWTH_RATE-1)*100}% growth factor applied · Parts below 5 sales/30d excluded · Parts with sufficient stock excluded automatically
+  </div>`;
+
+  document.getElementById('forecast-content').innerHTML = html;
+  document.getElementById('forecast-sa-alerts').innerHTML = '';
 }
 </script>
 </body>
