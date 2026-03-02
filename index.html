@@ -397,7 +397,7 @@ async function loadAll(){
 
     // Step 2: Only last 30 days to keep it fast — no last-year data yet
     const thirtyDaysAgo=daysAgo(30).toISOString();
-    const filter30='AND({Last desig of device}=["SOLD"],IS_AFTER({Allocation TimeStamp},"'+thirtyDaysAgo+'"))';
+    const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),IS_AFTER({Allocation TimeStamp},"'+thirtyDaysAgo+'"))';
     const fields30='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation TimeStamp&fields[]=Cost&fields[]=Suppliers';
 
     let recentRecords=[];
@@ -834,10 +834,10 @@ async function diagTS() {
   diagOut('diag-ts-out', 'Checking...', 'var(--accent4)');
   try {
     // Try filtering for SOLD without date
-    const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('{Last desig of device}=["SOLD"]'));
+    const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('FIND("SOLD",ARRAYJOIN({Last desig of device}))'));
     let out = '';
     if (noDate.error) {
-      out += '\u2717 Filter {Last desig of device}=["SOLD"] failed:\n' + JSON.stringify(noDate.error) + '\n\n';
+      out += '\u2717 Filter FIND("SOLD",ARRAYJOIN({Last desig of device})) failed:\n' + JSON.stringify(noDate.error) + '\n\n';
     } else {
       out += '\u2713 Filter "SOLD" (no date): ' + noDate.records.length + ' records returned' + (noDate.offset ? ' + more' : '') + '\n';
       if (noDate.records.length > 0) {
@@ -847,7 +847,7 @@ async function diagTS() {
     }
     // Try with date
     const ninetyAgo = new Date(Date.now() - 90*86400000).toISOString();
-    const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND({Last desig of device}=["SOLD"],IS_AFTER({Allocation TimeStamp},"'+ninetyAgo+'"))'));
+    const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),IS_AFTER({Allocation TimeStamp},"'+ninetyAgo+'"))'));
     if (withDate.error) {
       out += '\u2717 Filter SOLD + date failed:\n' + JSON.stringify(withDate.error);
     } else {
