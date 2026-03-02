@@ -371,18 +371,22 @@ async function fetchAllPages(table,extraParams=''){
 async function loadAll(){
   const btn=document.getElementById('load-btn');
   btn.disabled=true;btn.textContent='SYNCING...';
-  setSyncStatus('syncing','Loading inventory summary...');
+  setSyncStatus('syncing','Step 1/3: Loading inventory...');
   try {
+    // Step 1: Summary table - just first page to test
     const summaryRecords=await fetchAllPages(SUMMARY_TABLE);
+    setSyncStatus('syncing','Got '+summaryRecords.length+' SKUs. Step 2/3: Loading recent sales...');
+
     const partMap={};
     summaryRecords.forEach(r=>{
       const f=r.fields;
-      const key=((f['Part Type']||'').trim())+'|||'+((f['Device Model']||'').trim());
+      const pt=(f['Part Type']||'').toString().trim();
+      const mod=(f['Device Model']||'').toString().trim();
+      const key=pt+'|||'+mod;
       partMap[key]={
         id:r.id,sku:f['SKU']||'',
-        partType:(f['Part Type']||'').trim(),
-        model:(f['Device Model']||'').trim(),
-        brand:(f['Brand']||'').trim(),
+        partType:pt,model:mod,
+        brand:(f['Brand']||'').toString().trim(),
         inStock:Number(f['Total In Stock'])||0,
         usedMonth:Number(f['Total Used This Month'])||0,
         totalCount:Number(f['Total Count'])||0,
@@ -391,13 +395,27 @@ async function loadAll(){
       };
     });
 
-    setSyncStatus('syncing','Loaded '+summaryRecords.length+' SKUs. Loading 90 days of sales...');
-    const ninetyDaysAgo=daysAgo(90).toISOString();
-    const filterFormula='AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+ninetyDaysAgo+'"))';
-    const fields90='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation Timestamp&fields[]=Cost&fields[]=Suppliers';
-    const recentRecords=await fetchAllPages(LINE_ITEMS_TABLE,'&'+fields90+'&filterByFormula='+encodeURIComponent(filterFormula));
+    // Step 2: Only last 30 days to keep it fast — no last-year data yet
+    const thirtyDaysAgo=daysAgo(30).toISOString();
+    const filter30='AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+thirtyDaysAgo+'"))';
+    const fields30='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation Timestamp&fields[]=Cost&fields[]=Suppliers';
 
-    setSyncStatus('syncing','Processing '+recentRecords.length+' recent sales...');
+    let recentRecords=[];
+    try {
+      recentRecords=await fetchAllPages(LINE_ITEMS_TABLE,'&'+fields30+'&filterByFormula='+encodeURIComponent(filter30));
+      setSyncStatus('syncing','Got '+recentRecords.length+' sales. Step 3/3: Processing...');
+    } catch(e2){
+      setSyncStatus('syncing','Sales filter failed ('+e2.message+') — trying without filter...');
+      // Fallback: fetch without filter to see raw data
+      const rawRecords=await fetchAllPages(LINE_ITEMS_TABLE,'&fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation Timestamp&fields[]=Last desig of device&fields[]=Cost&fields[]=Suppliers&pageSize=100');
+      recentRecords=rawRecords.filter(r=>{
+        const desig=r.fields['Last desig of device'];
+        const val=(Array.isArray(desig)?desig[0]:desig||'').toString().toUpperCase();
+        return val==='SOLD';
+      });
+      setSyncStatus('syncing','Fallback: found '+recentRecords.length+' SOLD records in first 100. Processing...');
+    }
+
     recentRecords.forEach(r=>{
       const f=r.fields;
       const rawPT=f['Part Type'];const partType=(Array.isArray(rawPT)?rawPT[0]:rawPT||'').toString().trim();
@@ -415,46 +433,33 @@ async function loadAll(){
       }
     });
 
-    setSyncStatus('syncing','Loading same period last year...');
-    const lyStart=daysAgo(395).toISOString();
-    const lyEnd=daysAgo(335).toISOString();
-    const filterLY='AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+lyStart+'"),IS_BEFORE({Allocation Timestamp},"'+lyEnd+'"))';
-    const fieldsLY='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Allocation Timestamp';
-    const lyRecords=await fetchAllPages(LINE_ITEMS_TABLE,'&'+fieldsLY+'&filterByFormula='+encodeURIComponent(filterLY));
-
-    lyRecords.forEach(r=>{
-      const f=r.fields;
-      const rawPT=f['Part Type'];const partType=(Array.isArray(rawPT)?rawPT[0]:rawPT||'').toString().trim();
-      const rawModel=f['Models Strict (2)'];const model=(Array.isArray(rawModel)?rawModel[0]:rawModel||'').toString().trim();
-      const key=partType+'|||'+model;
-      if(partMap[key]&&f['Allocation Timestamp'])partMap[key].lastYearHistory.push(new Date(f['Allocation Timestamp']));
-    });
-
     allParts=Object.values(partMap).map(p=>{
       const last30=getSalesInRange(p,30);
       const last14=getSalesInRange(p,14);
       const last7=getSalesInRange(p,7);
-      const last60=getSalesInRange(p,60);
-      const last90=getSalesInRange(p,90);
-      const lastYear30=p.lastYearHistory.length;
       const thisMonthSales=p.salesHistory.filter(d=>d>=thisMonthStart).length;
       const lastMonthSales=p.salesHistory.filter(d=>d>=lastMonthStart&&d<=lastMonthEnd).length;
-      const daily30=last30/30;
-      const dailyLY=lastYear30/30;
-      const daily90=last90/90;
-      const weightedDaily=(daily30*0.7)+(dailyLY*0.2)+(daily90*0.1);
+      const weightedDaily=last30/30;
       const daysRemaining=weightedDaily>0?Math.floor(p.inStock/weightedDaily):999;
       const stockValue=p.inStock*p.cost;
-      return {...p,last30,last14,last7,last60,last90,lastYear30,thisMonthSales,lastMonthSales,weightedDaily,daily30,dailyLY,daily90,daysRemaining,stockValue};
+      return {...p,last30,last14,last7,last60:last30,last90:last30,lastYear30:0,thisMonthSales,lastMonthSales,weightedDaily,daily30:weightedDaily,dailyLY:0,daily90:weightedDaily,daysRemaining,stockValue};
     });
 
-    setSyncStatus('live',allParts.length+' SKUs · '+recentRecords.length+' sales (90d) · '+lyRecords.length+' last year');
+    const salesCount=recentRecords.length;
+    const activeCount=allParts.filter(p=>p.last30>0).length;
+    setSyncStatus('live',summaryRecords.length+' SKUs · '+salesCount+' sales (30d) · '+activeCount+' active');
     document.getElementById('last-sync').textContent=new Date().toLocaleTimeString('en-ZA');
     dataLoaded=true;
     populateFilters();
     renderAll();
+
+    // Log to console for debugging
+    console.log('Sample parts with sales:', allParts.filter(p=>p.last30>0).slice(0,5));
+    console.log('Total sales records:', salesCount);
+
   } catch(e){
     setSyncStatus('error','Error: '+e.message);
+    console.error('Sync error:', e);
     alert('Sync failed: '+e.message);
   }
   btn.disabled=false;btn.textContent='&#10227; SYNC DATA';
@@ -764,14 +769,11 @@ async function diagConn() {
   try {
     const data = await diagFetch('Parts Inventory Summary', '&pageSize=1');
     if (data.records && data.records.length > 0) {
-      diagOut('diag-conn-out', '✓ CONNECTED
-Field names on Parts Inventory Summary:
-' + JSON.stringify(Object.keys(data.records[0].fields), null, 2), 'var(--accent3)');
+      diagOut('diag-conn-out', '\u2713 CONNECTED\nField names on Parts Inventory Summary:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2), 'var(--accent3)');
     } else {
-      diagOut('diag-conn-out', '✗ ERROR:
-' + JSON.stringify(data, null, 2), 'var(--accent2)');
+      diagOut('diag-conn-out', '\u2717 ERROR:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
     }
-  } catch(e) { diagOut('diag-conn-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-conn-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagFields() {
@@ -779,21 +781,14 @@ async function diagFields() {
   try {
     const data = await diagFetch('Line items', '&pageSize=3');
     if (data.records && data.records.length > 0) {
-      let out = '✓ Got ' + data.records.length + ' Line Item records
-
-';
-      out += 'FIELD NAMES:
-' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
-      out += '
-
-FIRST RECORD VALUES:
-' + JSON.stringify(data.records[0].fields, null, 2);
+      let out = '\u2713 Got ' + data.records.length + ' Line Item records\n\n';
+      out += 'FIELD NAMES:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
+      out += '\n\nFIRST RECORD VALUES:\n' + JSON.stringify(data.records[0].fields, null, 2);
       diagOut('diag-fields-out', out, 'var(--accent3)');
     } else {
-      diagOut('diag-fields-out', '✗ Error:
-' + JSON.stringify(data, null, 2), 'var(--accent2)');
+      diagOut('diag-fields-out', '\u2717 Error:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
     }
-  } catch(e) { diagOut('diag-fields-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-fields-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagDesig() {
@@ -804,7 +799,7 @@ async function diagDesig() {
       let p = '&pageSize=100&fields[]=Last desig of device&fields[]=Allocation Timestamp';
       if (offset) p += '&offset=' + encodeURIComponent(offset);
       const data = await diagFetch('Line items', p);
-      if (data.error) { diagOut('diag-desig-out', '✗ Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
+      if (data.error) { diagOut('diag-desig-out', '\u2717 Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
       records = records.concat(data.records);
       offset = data.offset;
       pages++;
@@ -818,29 +813,21 @@ async function diagDesig() {
       values[v] = (values[v]||0) + 1;
     });
     const sorted = Object.entries(values).sort((a,b) => b[1]-a[1]);
-    let out = 'Scanned ' + records.length + ' records. Unique values in "Last desig of device":
-
-';
-    sorted.forEach(([v, c]) => { out += c + 'x  ' + v + '
-'; });
+    let out = 'Scanned ' + records.length + ' records. Unique values in "Last desig of device":\n\n';
+    sorted.forEach(([v, c]) => { out += c + 'x  ' + v + '\n'; });
 
     const hasSOLD = sorted.some(([v]) => v.toUpperCase().includes('SOLD'));
-    if (!hasSOLD) out += '
-⚠ WARNING: No "SOLD" value found! Check the values above for what the actual sold value is called.';
-    else out += '
-✓ "SOLD" value found.';
+    if (!hasSOLD) out += '\n\u26A0 WARNING: No "SOLD" value found! Check the values above for what the actual sold value is called.';
+    else out += '\n\u2713 "SOLD" value found.';
 
     // Also check timestamps
     const withTS = records.filter(r => r.fields['Allocation Timestamp']);
     const noTS = records.filter(r => !r.fields['Allocation Timestamp']);
-    out += '
-
-Allocation Timestamp: ' + withTS.length + ' records HAVE it, ' + noTS.length + ' are EMPTY';
-    if (withTS.length > 0) out += '
-Sample timestamp: ' + withTS[0].fields['Allocation Timestamp'];
+    out += '\n\nAllocation Timestamp: ' + withTS.length + ' records HAVE it, ' + noTS.length + ' are EMPTY';
+    if (withTS.length > 0) out += '\nSample timestamp: ' + withTS[0].fields['Allocation Timestamp'];
 
     diagOut('diag-desig-out', out, hasSOLD ? 'var(--accent3)' : 'var(--accent2)');
-  } catch(e) { diagOut('diag-desig-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-desig-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagTS() {
@@ -850,36 +837,27 @@ async function diagTS() {
     const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('{Last desig of device}="SOLD"'));
     let out = '';
     if (noDate.error) {
-      out += '✗ Filter {Last desig of device}="SOLD" failed:
-' + JSON.stringify(noDate.error) + '
-
-';
+      out += '\u2717 Filter {Last desig of device}="SOLD" failed:\n' + JSON.stringify(noDate.error) + '\n\n';
     } else {
-      out += '✓ Filter "SOLD" (no date): ' + noDate.records.length + ' records returned' + (noDate.offset ? ' + more' : '') + '
-';
+      out += '\u2713 Filter "SOLD" (no date): ' + noDate.records.length + ' records returned' + (noDate.offset ? ' + more' : '') + '\n';
       if (noDate.records.length > 0) {
-        out += 'Timestamp on first: ' + JSON.stringify(noDate.records[0].fields['Allocation Timestamp']) + '
-';
-        out += 'Full fields: ' + JSON.stringify(noDate.records[0].fields, null, 2) + '
-
-';
+        out += 'Timestamp on first: ' + JSON.stringify(noDate.records[0].fields['Allocation Timestamp']) + '\n';
+        out += 'Full fields: ' + JSON.stringify(noDate.records[0].fields, null, 2) + '\n\n';
       }
     }
     // Try with date
     const ninetyAgo = new Date(Date.now() - 90*86400000).toISOString();
     const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+ninetyAgo+'"))'));
     if (withDate.error) {
-      out += '✗ Filter SOLD + date failed:
-' + JSON.stringify(withDate.error);
+      out += '\u2717 Filter SOLD + date failed:\n' + JSON.stringify(withDate.error);
     } else {
-      out += '✓ Filter "SOLD" + last 90 days: ' + withDate.records.length + ' records returned' + (withDate.offset ? ' + more pages' : '');
+      out += '\u2713 Filter "SOLD" + last 90 days: ' + withDate.records.length + ' records returned' + (withDate.offset ? ' + more pages' : '');
       if (withDate.records.length === 0 && noDate.records && noDate.records.length > 0) {
-        out += '
-⚠ SOLD records exist but none in last 90 days — Allocation Timestamp may be empty or outside range';
+        out += '\n\u26A0 SOLD records exist but none in last 90 days — Allocation Timestamp may be empty or outside range';
       }
     }
     diagOut('diag-ts-out', out, 'var(--text2)');
-  } catch(e) { diagOut('diag-ts-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-ts-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagSummary() {
@@ -887,21 +865,14 @@ async function diagSummary() {
   try {
     const data = await diagFetch('Parts Inventory Summary', '&pageSize=3');
     if (data.records && data.records.length > 0) {
-      let out = '✓ Got ' + data.records.length + ' records
-
-';
-      out += 'FIELD NAMES:
-' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
-      out += '
-
-FIRST RECORD:
-' + JSON.stringify(data.records[0].fields, null, 2);
+      let out = '\u2713 Got ' + data.records.length + ' records\n\n';
+      out += 'FIELD NAMES:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
+      out += '\n\nFIRST RECORD:\n' + JSON.stringify(data.records[0].fields, null, 2);
       diagOut('diag-summary-out', out, 'var(--accent3)');
     } else {
-      diagOut('diag-summary-out', '✗ Error:
-' + JSON.stringify(data, null, 2), 'var(--accent2)');
+      diagOut('diag-summary-out', '\u2717 Error:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
     }
-  } catch(e) { diagOut('diag-summary-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-summary-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
 }
 </script>
 </body>
