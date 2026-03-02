@@ -425,14 +425,20 @@ async function loadAll(){
       summaryByPartType[pt].push({ key, model: p.model.toLowerCase(), brand: p.brand.toLowerCase() });
     });
 
+    // Exclude terms — board-level components and non-stock parts
+    const excludeTerms = ['audio ic','pmic','charging ic','power ic','touch ic','face id ic','nfc ic',' ic ','fpc','chip','baseband','tristar','hydra','tigris','u2 '];
+
     let matched = 0, unmatched = 0;
     recentRecords.forEach(r=>{
       const f=r.fields;
-      // Part Type is plain text
       const partType=(f['Part Type']||'').toString().trim();
-      // Name field contains full description e.g. "iPhone 8 LCD Black"
-      const name=(f['Name']||'').toString().toLowerCase();
-      // Supplier is plain text in Supplier / Contact
+      const name=(f['Name']||'').toString();
+      const nameLower = name.toLowerCase();
+
+      // Exclude board-level components FIRST before any matching
+      const isExcluded = excludeTerms.some(t => nameLower.includes(t));
+      if(isExcluded){ unmatched++; return; }
+
       const rawSup=f['Supplier / Contact'];
       const supplier=(Array.isArray(rawSup)?rawSup[0]:rawSup||'').toString().trim();
       const cost=Number(f['Cost'])||0;
@@ -440,29 +446,24 @@ async function loadAll(){
       const date=new Date(ts);
       if(isNaN(date.getTime()))return;
 
-      // Try to find matching part in Summary by part type + model name appearing in the Name string
+      // Match against Summary table by part type + model name in Name string
       const ptLower = partType.toLowerCase();
       const candidates = summaryByPartType[ptLower] || [];
       let bestKey = null;
+      let bestMatchLen = 0;
 
-      // Find the candidate whose model name appears in the line item Name field
+      // Find candidate whose model name appears in Name — prefer longest match to avoid false positives
       for(const c of candidates){
-        if(c.model && name.includes(c.model)){
-          bestKey = c.key;
-          break;
+        if(c.model && c.model.length > 2 && nameLower.includes(c.model)){
+          if(c.model.length > bestMatchLen){
+            bestKey = c.key;
+            bestMatchLen = c.model.length;
+          }
         }
       }
 
-      // Fallback: if only one candidate for this part type, use it
-      if(!bestKey && candidates.length === 1){
-        bestKey = candidates[0].key;
-      }
-
-      // Exclude board-level components
-      const excludeTerms = ['audio ic','pmic',' ic ','ic ','fpc','chip'];
-      const nameLower = (f['Name']||'').toString().toLowerCase();
-      const isExcluded = excludeTerms.some(t => nameLower.includes(t));
-      if(isExcluded){ unmatched++; return; }
+      // NO fallback — if we can't match by model name, skip it
+      // This prevents dumping unmatched records onto random parts like Nokia 3 Battery
 
       if(bestKey && partMap[bestKey]){
         partMap[bestKey].salesHistory.push(date);
@@ -473,7 +474,7 @@ async function loadAll(){
         unmatched++;
       }
     });
-    console.log('Matched:', matched, 'Unmatched:', unmatched);
+    console.log('Matched:', matched, 'Unmatched:', unmatched, 'Total:', recentRecords.length);
 
     allParts=Object.values(partMap).map(p=>{
       const last30=getSalesInRange(p,30);
