@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Airtable Diagnostic</title>
+<style>
+body{background:#080c0f;color:#e8f4f8;font-family:'Courier New',monospace;padding:20px;font-size:13px;}
+.section{background:#0e1419;border:1px solid #1e2d38;padding:16px;margin-bottom:16px;border-radius:2px;}
+.section h2{color:#00d4ff;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin-bottom:12px;}
+.ok{color:#2ed573;} .warn{color:#ffa502;} .err{color:#ff4757;}
+.btn{background:#00d4ff;color:#000;border:none;padding:10px 20px;font-family:monospace;font-size:12px;cursor:pointer;margin-right:8px;margin-bottom:8px;}
+pre{white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.6;}
+</style>
+</head>
+<body>
+<h1 style="color:#00d4ff;font-size:14px;letter-spacing:4px;text-transform:uppercase;margin-bottom:20px">Airtable Diagnostic Tool</h1>
+
+<div class="section">
+  <h2>Step 1 — Test API Connection</h2>
+  <button class="btn" onclick="testConnection()">Test Connection</button>
+  <div id="conn-result"></div>
+</div>
+
+<div class="section">
+  <h2>Step 2 — Inspect Line Items Fields</h2>
+  <button class="btn" onclick="inspectLineItems()">Fetch 3 Line Item Records</button>
+  <div id="li-result"></div>
+</div>
+
+<div class="section">
+  <h2>Step 3 — Check SOLD Records</h2>
+  <button class="btn" onclick="checkSold()">Count SOLD Records (last 90d)</button>
+  <div id="sold-result"></div>
+</div>
+
+<div class="section">
+  <h2>Step 4 — Check Allocation Timestamp Values</h2>
+  <button class="btn" onclick="checkTimestamps()">Inspect Timestamps</button>
+  <div id="ts-result"></div>
+</div>
+
+<div class="section">
+  <h2>Step 5 — Check Last Desig Field Values</h2>
+  <button class="btn" onclick="checkDesig()">See All Unique Values in Last desig of device</button>
+  <div id="desig-result"></div>
+</div>
+
+<div class="section">
+  <h2>Step 6 — Parts Inventory Summary Sample</h2>
+  <button class="btn" onclick="checkSummary()">Fetch 3 Summary Records</button>
+  <div id="summary-result"></div>
+</div>
+
+<script>
+const BASE_ID = 'appP1JCcNoTs54a2t';
+
+async function apiFetch(table, params='') {
+  const url = '/api/airtable?base='+BASE_ID+'&table='+encodeURIComponent(table)+params;
+  const res = await fetch(url);
+  return res.json();
+}
+
+function log(elId, html) {
+  document.getElementById(elId).innerHTML = html;
+}
+
+async function testConnection() {
+  log('conn-result', '<span class="warn">Testing...</span>');
+  try {
+    const data = await apiFetch('Parts Inventory Summary', '&pageSize=1');
+    if (data.records && data.records.length > 0) {
+      log('conn-result', '<span class="ok">✓ Connected. Parts Inventory Summary accessible. Got '+data.records.length+' record(s).</span><br><br>First record fields:<br><pre>'+JSON.stringify(Object.keys(data.records[0].fields), null, 2)+'</pre>');
+    } else if (data.error) {
+      log('conn-result', '<span class="err">✗ Error: '+JSON.stringify(data.error)+'</span>');
+    } else {
+      log('conn-result', '<span class="warn">Connected but no records returned. Response: '+JSON.stringify(data)+'</span>');
+    }
+  } catch(e) {
+    log('conn-result', '<span class="err">✗ Exception: '+e.message+'</span>');
+  }
+}
+
+async function inspectLineItems() {
+  log('li-result', '<span class="warn">Fetching...</span>');
+  try {
+    const data = await apiFetch('Line items', '&pageSize=3');
+    if (data.records && data.records.length > 0) {
+      let html = '<span class="ok">✓ Got '+data.records.length+' records. Total offset: '+(data.offset?'more pages exist':'no more pages')+'</span><br><br>';
+      html += '<strong>ALL FIELD NAMES on first record:</strong><br><pre>'+JSON.stringify(Object.keys(data.records[0].fields), null, 2)+'</pre>';
+      html += '<strong>FULL FIRST RECORD:</strong><br><pre>'+JSON.stringify(data.records[0].fields, null, 2)+'</pre>';
+      html += '<strong>SECOND RECORD:</strong><br><pre>'+JSON.stringify(data.records[1]?.fields, null, 2)+'</pre>';
+      log('li-result', html);
+    } else {
+      log('li-result', '<span class="err">Error or no records: '+JSON.stringify(data)+'</span>');
+    }
+  } catch(e) {
+    log('li-result', '<span class="err">Exception: '+e.message+'</span>');
+  }
+}
+
+async function checkSold() {
+  log('sold-result', '<span class="warn">Checking...</span>');
+  try {
+    // First try without date filter to see if SOLD exists at all
+    const noDate = await apiFetch('Line items', '&pageSize=10&filterByFormula='+encodeURIComponent('{Last desig of device}="SOLD"'));
+    let html = '';
+    if (noDate.error) {
+      html += '<span class="err">Filter error (no date): '+JSON.stringify(noDate.error)+'</span><br>';
+    } else {
+      html += '<span class="ok">✓ SOLD records exist (no date filter): '+noDate.records.length+' returned'+(noDate.offset?' + more':'')+'</span><br>';
+      if (noDate.records.length > 0) {
+        html += 'Sample SOLD record fields:<br><pre>'+JSON.stringify(noDate.records[0].fields, null, 2)+'</pre>';
+      }
+    }
+
+    // Now try with 90 day filter
+    const ninetyDaysAgo = new Date(Date.now() - 90*86400000).toISOString();
+    const withDate = await apiFetch('Line items', '&pageSize=10&filterByFormula='+encodeURIComponent('AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+ninetyDaysAgo+'"))'));
+    if (withDate.error) {
+      html += '<span class="err">Filter error (with date): '+JSON.stringify(withDate.error)+'</span><br>';
+      html += '<span class="warn">This means the Allocation Timestamp filter is failing. The field may be named differently or empty.</span>';
+    } else {
+      html += '<span class="ok">✓ SOLD records with date filter (last 90d): '+withDate.records.length+' returned'+(withDate.offset?' + more':'')+'</span>';
+      if (withDate.records.length === 0 && noDate.records.length > 0) {
+        html += '<br><span class="warn">⚠ SOLD records exist but none in last 90 days. Check the Allocation Timestamp field — it may be empty or named differently.</span>';
+        if (noDate.records[0]) {
+          html += '<br>Timestamp value in first SOLD record: <strong>'+JSON.stringify(noDate.records[0].fields['Allocation Timestamp'])+'</strong>';
+        }
+      }
+    }
+    log('sold-result', html);
+  } catch(e) {
+    log('sold-result', '<span class="err">Exception: '+e.message+'</span>');
+  }
+}
+
+async function checkTimestamps() {
+  log('ts-result', '<span class="warn">Checking...</span>');
+  try {
+    const data = await apiFetch('Line items', '&pageSize=10&fields[]=Allocation Timestamp&fields[]=Last desig of device');
+    if (data.error) {
+      log('ts-result', '<span class="err">Error: '+JSON.stringify(data.error)+'</span>');
+      return;
+    }
+    let html = '<span class="ok">Got '+data.records.length+' records</span><br><br>';
+    html += '<table style="border-collapse:collapse;width:100%"><tr><th style="text-align:left;padding:4px 8px;color:#00d4ff">Record ID</th><th style="text-align:left;padding:4px 8px;color:#00d4ff">Last desig of device</th><th style="text-align:left;padding:4px 8px;color:#00d4ff">Allocation Timestamp</th></tr>';
+    data.records.forEach(r => {
+      const ts = r.fields['Allocation Timestamp'];
+      const desig = r.fields['Last desig of device'];
+      const tsColor = ts ? '#2ed573' : '#ff4757';
+      html += '<tr><td style="padding:4px 8px;color:#4a6a7a">'+r.id+'</td><td style="padding:4px 8px">'+JSON.stringify(desig)+'</td><td style="padding:4px 8px;color:'+tsColor+'">'+JSON.stringify(ts)+'</td></tr>';
+    });
+    html += '</table>';
+    log('ts-result', html);
+  } catch(e) {
+    log('ts-result', '<span class="err">Exception: '+e.message+'</span>');
+  }
+}
+
+async function checkDesig() {
+  log('desig-result', '<span class="warn">Fetching sample to find all unique values...</span>');
+  try {
+    let records = [], offset = null;
+    let pages = 0;
+    do {
+      let url = '&pageSize=100&fields[]=Last desig of device';
+      if (offset) url += '&offset='+encodeURIComponent(offset);
+      const data = await apiFetch('Line items', url);
+      if (data.error) { log('desig-result', '<span class="err">Error: '+JSON.stringify(data.error)+'</span>'); return; }
+      records = records.concat(data.records);
+      offset = data.offset;
+      pages++;
+      log('desig-result', '<span class="warn">Loading... '+records.length+' records so far (page '+pages+')</span>');
+      if (pages >= 5) break; // limit to 500 records for speed
+    } while(offset);
+
+    const values = {};
+    records.forEach(r => {
+      const v = JSON.stringify(r.fields['Last desig of device'] || 'EMPTY/NULL');
+      values[v] = (values[v]||0)+1;
+    });
+    const sorted = Object.entries(values).sort((a,b)=>b[1]-a[1]);
+    let html = '<span class="ok">Scanned '+records.length+' records. Unique values found:</span><br><br>';
+    html += '<table style="border-collapse:collapse"><tr><th style="text-align:left;padding:4px 12px;color:#00d4ff">Value</th><th style="text-align:left;padding:4px 12px;color:#00d4ff">Count</th></tr>';
+    sorted.forEach(([v,c]) => {
+      const isSOLD = v.includes('SOLD');
+      html += '<tr><td style="padding:4px 12px;color:'+(isSOLD?'#2ed573':'#e8f4f8')+'">'+v+'</td><td style="padding:4px 12px;color:#ffa502">'+c+'</td></tr>';
+    });
+    html += '</table>';
+    if (!sorted.some(([v])=>v.includes('SOLD'))) {
+      html += '<br><span class="err">⚠ NO "SOLD" VALUES FOUND. This is why no sales data is loading. The field value may be different — see the values above.</span>';
+    }
+    log('desig-result', html);
+  } catch(e) {
+    log('desig-result', '<span class="err">Exception: '+e.message+'</span>');
+  }
+}
+
+async function checkSummary() {
+  log('summary-result', '<span class="warn">Fetching...</span>');
+  try {
+    const data = await apiFetch('Parts Inventory Summary', '&pageSize=3');
+    if (data.records && data.records.length > 0) {
+      let html = '<span class="ok">✓ Got '+data.records.length+' records</span><br><br>';
+      html += '<strong>ALL FIELD NAMES:</strong><br><pre>'+JSON.stringify(Object.keys(data.records[0].fields), null, 2)+'</pre>';
+      html += '<strong>FIRST RECORD VALUES:</strong><br><pre>'+JSON.stringify(data.records[0].fields, null, 2)+'</pre>';
+      log('summary-result', html);
+    } else {
+      log('summary-result', '<span class="err">Error: '+JSON.stringify(data)+'</span>');
+    }
+  } catch(e) {
+    log('summary-result', '<span class="err">Exception: '+e.message+'</span>');
+  }
+}
+</script>
+</body>
+</html>
