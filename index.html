@@ -397,7 +397,7 @@ async function loadAll(){
 
     // Step 2: Only last 30 days to keep it fast — no last-year data yet
     const thirtyDaysAgo=daysAgo(30).toISOString();
-    const thirtyDaysStr=daysAgo(30).toISOString().split('T')[0];const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),{Allocation TimeStamp}>="'+thirtyDaysStr+'")';
+    const thirtyDaysStr=daysAgo(30).toISOString().split('T')[0];const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),{Allocation TimeStamp}>="'+thirtyDaysStr+'",FIND("Stock (Parts)",ARRAYJOIN({Cost Type})))';
     const fields30='fields[]=Name&fields[]=Part Type&fields[]=Allocation TimeStamp&fields[]=Cost&fields[]=Supplier / Contact';
 
     let recentRecords=[];
