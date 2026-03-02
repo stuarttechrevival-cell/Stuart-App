@@ -168,11 +168,10 @@ tbody tr:hover td{background:var(--bg3);}
       <div class="page-sub">Weighted model: 70% last 30d · 20% same period last year · 10% 90-day avg · Min 2 sales threshold</div>
       <div class="toolbar">
         <select class="filter-select" id="fc-range" onchange="renderForecast()">
-          <option value="30">Based on last 30 days</option>
-          <option value="14">Based on last 14 days</option>
-          <option value="7">Based on last 7 days</option>
-          <option value="60">Based on last 60 days</option>
-          <option value="90">Based on last 90 days</option>
+          <option value="84" selected>Rolling 12 weeks (84 days)</option>
+          <option value="30">Last 30 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="60">Last 60 days</option>
         </select>
         <select class="filter-select" id="fc-brand" onchange="renderForecast()"><option value="">All Brands</option></select>
         <select class="filter-select" id="fc-type" onchange="renderForecast()"><option value="">All Part Types</option></select>
@@ -397,7 +396,7 @@ async function loadAll(){
 
     // Step 2: Only last 30 days to keep it fast — no last-year data yet
     const thirtyDaysAgo=daysAgo(30).toISOString();
-    const thirtyDaysStr=daysAgo(30).toISOString().split('T')[0];const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),{Allocation TimeStamp}>="'+thirtyDaysStr+'",FIND("Stock (Parts)",ARRAYJOIN({Cost Type})))';
+    const thirtyDaysStr=daysAgo(84).toISOString().split('T')[0];const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),{Allocation TimeStamp}>="'+thirtyDaysStr+'",FIND("Stock (Parts)",ARRAYJOIN({Cost Type})))';
     const fields30='fields[]=Name&fields[]=Part Type&fields[]=Allocation TimeStamp&fields[]=Cost&fields[]=Supplier / Contact';
 
     let recentRecords=[];
@@ -490,7 +489,7 @@ async function loadAll(){
 
     const salesCount=recentRecords.length;
     const activeCount=allParts.filter(p=>p.last30>0).length;
-    setSyncStatus('live',summaryRecords.length+' SKUs · '+salesCount+' sales (30d) · '+activeCount+' active');
+    setSyncStatus('live',summaryRecords.length+' SKUs · '+salesCount+' uses (84d) · '+activeCount+' active');
     document.getElementById('last-sync').textContent=new Date().toLocaleTimeString('en-ZA');
     dataLoaded=true;
     populateFilters();
@@ -579,32 +578,34 @@ function renderDashboard(){
 }
 
 function renderForecast(){
-  const rangeDays=parseInt(document.getElementById('fc-range')?.value||30);
+  const rangeDays=parseInt(document.getElementById('fc-range')?.value||84);
   const brandFilter=document.getElementById('fc-brand')?.value||'';
   const typeFilter=document.getElementById('fc-type')?.value||'';
-  const month=now.getMonth();
-  const seasonMult=month===11?1.4:month===0?0.75:(month===5||month===6)?1.2:month===9?1.15:1.0;
-  const catW={'battery':1.6,'lcd':1.5,'screen':1.5,'oled':1.5,'soft oled':1.5,'charging dock':1.4,'charging port':1.4,'flex':1.2,'camera':1.1};
 
+  // Rolling 12-week (84 day) average — no seasonal multipliers
   const eligible=allParts.filter(p=>{
     const sales=getSalesInRange(p,rangeDays);
     return sales>=MIN_SALES&&(!brandFilter||p.brand===brandFilter)&&(!typeFilter||p.partType===typeFilter);
   });
 
-  if(!eligible.length){document.getElementById('forecast-content').innerHTML='<div class="empty"><div class="empty-title">No parts meet the minimum threshold for this filter</div></div>';return;}
+  if(!eligible.length){document.getElementById('forecast-content').innerHTML='<div class="empty"><div class="empty-title">No parts with 2+ uses in the selected period</div></div>';return;}
 
   const orderList=eligible.map(p=>{
     const salesInRange=getSalesInRange(p,rangeDays);
+    // Smooth the daily rate over the full period
     const dailyRate=salesInRange/rangeDays;
-    const pl=(p.partType||'').toLowerCase();
-    let cw=1.0;for(const [k,w] of Object.entries(catW)){if(pl.includes(k)){cw=w;break;}}
-    const weeklyNeed=dailyRate*7*GROWTH_RATE*seasonMult*cw;
-    const buffer=dailyRate*LEAD_TIME_DAYS;
-    const toOrder=Math.max(0,Math.ceil(weeklyNeed+buffer)-p.inStock);
-    const daysAfterOrder=dailyRate>0?Math.floor((p.inStock+toOrder)/dailyRate):999;
-    const daysNow=p.weightedDaily>0?Math.floor(p.inStock/p.weightedDaily):999;
-    return {...p,dailyRate,toOrder,daysAfterOrder,daysNow,salesInRange};
-  }).filter(p=>p.toOrder>0).sort((a,b)=>b.salesInRange-a.salesInRange);
+    const monthlyRate=dailyRate*30;
+
+    // Dynamic cover: fast movers get more buffer, slow movers less
+    const coverDays = monthlyRate>=10 ? 14 : monthlyRate>=5 ? 10 : 7;
+    const totalCoverDays = coverDays + LEAD_TIME_DAYS;
+    const needed = Math.ceil(dailyRate * totalCoverDays);
+    const toOrder = Math.max(0, needed - p.inStock);
+    const daysAfterOrder = dailyRate>0 ? Math.floor((p.inStock+toOrder)/dailyRate) : 999;
+    const daysNow = dailyRate>0 ? Math.floor(p.inStock/dailyRate) : 999;
+    const velocity = monthlyRate>=10 ? 'FAST' : monthlyRate>=5 ? 'MED' : 'SLOW';
+    return {...p,dailyRate,monthlyRate,toOrder,daysAfterOrder,daysNow,salesInRange,coverDays,velocity};
+  }).filter(p=>p.toOrder>0).sort((a,b)=>b.monthlyRate-a.monthlyRate);
 
   if(!orderList.length){document.getElementById('forecast-content').innerHTML='<div class="alert alert-green">All fast-moving parts are well stocked for the week ahead.</div>';return;}
 
@@ -624,11 +625,11 @@ function renderForecast(){
       const uc=p.daysNow<=3?'var(--accent2)':p.daysNow<=7?'var(--accent4)':'var(--accent3)';
       const ut=p.daysNow===0?'OUT OF STOCK':p.daysNow<=3?'Runs out in '+p.daysNow+'d — urgent':p.daysNow<=7?'Runs out in '+p.daysNow+'d':p.inStock+' units in stock';
       const ct=p.daysAfterOrder>=999?'covers indefinitely':'should last '+p.daysAfterOrder+' days after ordering';
-      html+='<div class="order-card"><div class="order-card-left"><div class="order-card-title">'+p.model+' &mdash; '+p.partType+'</div><div class="order-card-sub">Order <strong style="color:var(--accent);font-family:var(--mono)">'+p.toOrder+'</strong> units &middot; '+ct+' &middot; <span style="color:'+uc+'">'+ut+'</span> &middot; '+p.salesInRange+' sold last '+rangeDays+'d &middot; '+p.dailyRate.toFixed(2)+'/day</div></div><div><div class="order-card-qty">'+p.toOrder+'</div><div class="order-card-label">QTY</div></div></div>';
+      const velColor=p.velocity==='FAST'?'var(--accent3)':p.velocity==='MED'?'var(--accent4)':'var(--text3)';html+='<div class="order-card"><div class="order-card-left"><div class="order-card-title">'+p.model+' &mdash; '+p.partType+'</div><div class="order-card-sub">Order <strong style="color:var(--accent);font-family:var(--mono)">'+p.toOrder+'</strong> units &middot; covers '+p.coverDays+'d + '+LEAD_TIME_DAYS+'d lead &middot; <span style="color:'+uc+'">'+ut+'</span> &middot; <span style="color:'+velColor+'">'+p.velocity+'</span> &middot; '+p.monthlyRate.toFixed(1)+'/mo avg &middot; '+p.dailyRate.toFixed(2)+'/day</div></div><div><div class="order-card-qty">'+p.toOrder+'</div><div class="order-card-label">QTY</div></div></div>';
     });
     html+='</div></div>';
   }
-  html+='<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;line-height:1.8;margin-top:8px">ORDER NOTES &middot; 7-day cover + '+LEAD_TIME_DAYS+'-day lead buffer &middot; Weighted model: 70% recent / 20% last year / 10% 90d avg &middot; SA seasonal factor: '+seasonMult.toFixed(2)+'x &middot; Min threshold: '+MIN_SALES+' sales &middot; Parts with sufficient stock auto-excluded</div>';
+  html+='<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;line-height:1.8;margin-top:8px">ORDER NOTES &middot; Rolling 12-week (84d) average &middot; Dynamic cover: FAST movers 14d, MED 10d, SLOW 7d (all + '+LEAD_TIME_DAYS+'d lead buffer) &middot; No seasonal adjustments &middot; Min threshold: '+MIN_SALES+' uses &middot; Parts with sufficient stock auto-excluded</div>';
   document.getElementById('forecast-content').innerHTML=html;
 }
 
