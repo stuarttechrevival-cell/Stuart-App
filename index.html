@@ -397,8 +397,8 @@ async function loadAll(){
 
     // Step 2: Only last 30 days to keep it fast — no last-year data yet
     const thirtyDaysAgo=daysAgo(30).toISOString();
-    const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),IS_AFTER({Allocation TimeStamp},"'+thirtyDaysAgo+'"))';
-    const fields30='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation TimeStamp&fields[]=Cost&fields[]=Suppliers';
+    const thirtyDaysStr=daysAgo(30).toISOString().split('T')[0];const filter30='AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),{Allocation TimeStamp}>="'+thirtyDaysStr+'")';
+    const fields30='fields[]=Name&fields[]=Part Type&fields[]=Allocation TimeStamp&fields[]=Cost&fields[]=Supplier / Contact';
 
     let recentRecords=[];
     try {
@@ -416,22 +416,58 @@ async function loadAll(){
       setSyncStatus('syncing','Fallback: found '+recentRecords.length+' SOLD records in first 100. Processing...');
     }
 
+    // Build a lookup from Summary table: partType -> list of {model, key}
+    // so we can match line items by part type + name string
+    const summaryByPartType = {};
+    Object.entries(partMap).forEach(([key, p]) => {
+      const pt = p.partType.toLowerCase();
+      if (!summaryByPartType[pt]) summaryByPartType[pt] = [];
+      summaryByPartType[pt].push({ key, model: p.model.toLowerCase(), brand: p.brand.toLowerCase() });
+    });
+
+    let matched = 0, unmatched = 0;
     recentRecords.forEach(r=>{
       const f=r.fields;
-      const rawPT=f['Part Type'];const partType=(Array.isArray(rawPT)?rawPT[0]:rawPT||'').toString().trim();
-      const rawModel=f['Models Strict (2)'];const model=(Array.isArray(rawModel)?rawModel[0]:rawModel||'').toString().trim();
-      const rawBrand=f['Brand 2'];const brand=(Array.isArray(rawBrand)?rawBrand[0]:rawBrand||'').toString().trim();
-      const rawSup=f['Suppliers'];const supplier=(Array.isArray(rawSup)?rawSup[0]:rawSup||'').toString().trim();
+      // Part Type is plain text
+      const partType=(f['Part Type']||'').toString().trim();
+      // Name field contains full description e.g. "iPhone 8 LCD Black"
+      const name=(f['Name']||'').toString().toLowerCase();
+      // Supplier is plain text in Supplier / Contact
+      const rawSup=f['Supplier / Contact'];
+      const supplier=(Array.isArray(rawSup)?rawSup[0]:rawSup||'').toString().trim();
       const cost=Number(f['Cost'])||0;
       const ts=f['Allocation TimeStamp'];if(!ts)return;
       const date=new Date(ts);
-      const key=partType+'|||'+model;
-      if(partMap[key]){
-        partMap[key].salesHistory.push(date);
-        if(cost>0&&partMap[key].cost===0)partMap[key].cost=cost;
-        if(supplier&&!partMap[key].supplier)partMap[key].supplier=supplier;
+      if(isNaN(date.getTime()))return;
+
+      // Try to find matching part in Summary by part type + model name appearing in the Name string
+      const ptLower = partType.toLowerCase();
+      const candidates = summaryByPartType[ptLower] || [];
+      let bestKey = null;
+
+      // Find the candidate whose model name appears in the line item Name field
+      for(const c of candidates){
+        if(c.model && name.includes(c.model)){
+          bestKey = c.key;
+          break;
+        }
+      }
+
+      // Fallback: if only one candidate for this part type, use it
+      if(!bestKey && candidates.length === 1){
+        bestKey = candidates[0].key;
+      }
+
+      if(bestKey && partMap[bestKey]){
+        partMap[bestKey].salesHistory.push(date);
+        if(cost>0&&partMap[bestKey].cost===0)partMap[bestKey].cost=cost;
+        if(supplier&&!partMap[bestKey].supplier)partMap[bestKey].supplier=supplier;
+        matched++;
+      } else {
+        unmatched++;
       }
     });
+    console.log('Matched:', matched, 'Unmatched:', unmatched);
 
     allParts=Object.values(partMap).map(p=>{
       const last30=getSalesInRange(p,30);
