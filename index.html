@@ -312,7 +312,7 @@ tbody tr:hover td{background:var(--bg3);}
         <pre id="diag-desig-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
       <div class="card section-gap">
-        <div class="card-title">Step 4 — Allocation Timestamp Values</div>
+        <div class="card-title">Step 4 — Allocation TimeStamp Values</div>
         <button onclick="diagTS()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">CHECK TIMESTAMPS</button>
         <pre id="diag-ts-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
@@ -397,8 +397,8 @@ async function loadAll(){
 
     // Step 2: Only last 30 days to keep it fast — no last-year data yet
     const thirtyDaysAgo=daysAgo(30).toISOString();
-    const filter30='AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+thirtyDaysAgo+'"))';
-    const fields30='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation Timestamp&fields[]=Cost&fields[]=Suppliers';
+    const filter30='AND({Last desig of device}=["SOLD"],IS_AFTER({Allocation TimeStamp},"'+thirtyDaysAgo+'"))';
+    const fields30='fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation TimeStamp&fields[]=Cost&fields[]=Suppliers';
 
     let recentRecords=[];
     try {
@@ -407,7 +407,7 @@ async function loadAll(){
     } catch(e2){
       setSyncStatus('syncing','Sales filter failed ('+e2.message+') — trying without filter...');
       // Fallback: fetch without filter to see raw data
-      const rawRecords=await fetchAllPages(LINE_ITEMS_TABLE,'&fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation Timestamp&fields[]=Last desig of device&fields[]=Cost&fields[]=Suppliers&pageSize=100');
+      const rawRecords=await fetchAllPages(LINE_ITEMS_TABLE,'&fields[]=Part Type&fields[]=Models Strict (2)&fields[]=Brand 2&fields[]=Allocation TimeStamp&fields[]=Last desig of device&fields[]=Cost&fields[]=Suppliers&pageSize=100');
       recentRecords=rawRecords.filter(r=>{
         const desig=r.fields['Last desig of device'];
         const val=(Array.isArray(desig)?desig[0]:desig||'').toString().toUpperCase();
@@ -423,7 +423,7 @@ async function loadAll(){
       const rawBrand=f['Brand 2'];const brand=(Array.isArray(rawBrand)?rawBrand[0]:rawBrand||'').toString().trim();
       const rawSup=f['Suppliers'];const supplier=(Array.isArray(rawSup)?rawSup[0]:rawSup||'').toString().trim();
       const cost=Number(f['Cost'])||0;
-      const ts=f['Allocation Timestamp'];if(!ts)return;
+      const ts=f['Allocation TimeStamp'];if(!ts)return;
       const date=new Date(ts);
       const key=partType+'|||'+model;
       if(partMap[key]){
@@ -796,7 +796,7 @@ async function diagDesig() {
   try {
     let records = [], offset = null, pages = 0;
     do {
-      let p = '&pageSize=100&fields[]=Last desig of device&fields[]=Allocation Timestamp';
+      let p = '&pageSize=100&fields[]=Last desig of device&fields[]=Allocation TimeStamp';
       if (offset) p += '&offset=' + encodeURIComponent(offset);
       const data = await diagFetch('Line items', p);
       if (data.error) { diagOut('diag-desig-out', '\u2717 Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
@@ -821,10 +821,10 @@ async function diagDesig() {
     else out += '\n\u2713 "SOLD" value found.';
 
     // Also check timestamps
-    const withTS = records.filter(r => r.fields['Allocation Timestamp']);
-    const noTS = records.filter(r => !r.fields['Allocation Timestamp']);
-    out += '\n\nAllocation Timestamp: ' + withTS.length + ' records HAVE it, ' + noTS.length + ' are EMPTY';
-    if (withTS.length > 0) out += '\nSample timestamp: ' + withTS[0].fields['Allocation Timestamp'];
+    const withTS = records.filter(r => r.fields['Allocation TimeStamp']);
+    const noTS = records.filter(r => !r.fields['Allocation TimeStamp']);
+    out += '\n\nAllocation TimeStamp: ' + withTS.length + ' records HAVE it, ' + noTS.length + ' are EMPTY';
+    if (withTS.length > 0) out += '\nSample timestamp: ' + withTS[0].fields['Allocation TimeStamp'];
 
     diagOut('diag-desig-out', out, hasSOLD ? 'var(--accent3)' : 'var(--accent2)');
   } catch(e) { diagOut('diag-desig-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
@@ -834,26 +834,26 @@ async function diagTS() {
   diagOut('diag-ts-out', 'Checking...', 'var(--accent4)');
   try {
     // Try filtering for SOLD without date
-    const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('{Last desig of device}="SOLD"'));
+    const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('{Last desig of device}=["SOLD"]'));
     let out = '';
     if (noDate.error) {
-      out += '\u2717 Filter {Last desig of device}="SOLD" failed:\n' + JSON.stringify(noDate.error) + '\n\n';
+      out += '\u2717 Filter {Last desig of device}=["SOLD"] failed:\n' + JSON.stringify(noDate.error) + '\n\n';
     } else {
       out += '\u2713 Filter "SOLD" (no date): ' + noDate.records.length + ' records returned' + (noDate.offset ? ' + more' : '') + '\n';
       if (noDate.records.length > 0) {
-        out += 'Timestamp on first: ' + JSON.stringify(noDate.records[0].fields['Allocation Timestamp']) + '\n';
+        out += 'Timestamp on first: ' + JSON.stringify(noDate.records[0].fields['Allocation TimeStamp']) + '\n';
         out += 'Full fields: ' + JSON.stringify(noDate.records[0].fields, null, 2) + '\n\n';
       }
     }
     // Try with date
     const ninetyAgo = new Date(Date.now() - 90*86400000).toISOString();
-    const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+ninetyAgo+'"))'));
+    const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND({Last desig of device}=["SOLD"],IS_AFTER({Allocation TimeStamp},"'+ninetyAgo+'"))'));
     if (withDate.error) {
       out += '\u2717 Filter SOLD + date failed:\n' + JSON.stringify(withDate.error);
     } else {
       out += '\u2713 Filter "SOLD" + last 90 days: ' + withDate.records.length + ' records returned' + (withDate.offset ? ' + more pages' : '');
       if (withDate.records.length === 0 && noDate.records && noDate.records.length > 0) {
-        out += '\n\u26A0 SOLD records exist but none in last 90 days — Allocation Timestamp may be empty or outside range';
+        out += '\n\u26A0 SOLD records exist but none in last 90 days — Allocation TimeStamp may be empty or outside range';
       }
     }
     diagOut('diag-ts-out', out, 'var(--text2)');
