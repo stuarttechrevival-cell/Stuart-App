@@ -701,13 +701,13 @@ function renderCatalogue(){
 }
 
 function renderDeadStock(){
-  const dead=allParts.filter(p=>p.thisMonthSales===0&&p.lastMonthSales===0&&p.inStock>0).sort((a,b)=>b.inStock-a.inStock);
+  const dead=allParts.filter(p=>(p.usedMonth||0)===0&&(p.usedLastMonth||0)===0&&p.inStock>0).sort((a,b)=>b.inStock-a.inStock);
   if(!dead.length){document.getElementById('deadstock-content').innerHTML='<div class="alert alert-green">No dead stock detected.</div>';return;}
   const totalUnits=dead.reduce((a,p)=>a+p.inStock,0);
   const totalValue=dead.reduce((a,p)=>a+p.stockValue,0);
   let html='<div class="alert alert-yellow" style="margin-bottom:16px"><strong>'+dead.length+' SKUs</strong> &middot; '+totalUnits+' units'+(totalValue>0?' &middot; Est. value R'+Math.round(totalValue).toLocaleString():'')+' &mdash; zero sales this month and last month</div>';
   html+='<div class="table-wrap"><table><thead><tr><th>Part Type</th><th>Model</th><th>Brand</th><th>In Stock</th><th>Stock Value</th><th>Total Ever</th><th>Action</th></tr></thead><tbody>';
-  dead.forEach(p=>{html+='<tr><td><strong>'+(p.partType||'&#8212;')+'</strong></td><td style="color:var(--text2)">'+(p.model||'&#8212;')+'</td><td>'+(p.brand?'<span class="badge badge-blue">'+p.brand+'</span>':'&#8212;')+'</td><td><span class="num" style="color:var(--accent4)">'+p.inStock+'</span></td><td class="sku">'+(p.stockValue>0?'R'+Math.round(p.stockValue).toLocaleString():'&#8212;')+'</td><td class="sku">'+p.totalCount.toLocaleString()+'</td><td><span class="badge badge-yellow">REVIEW</span></td></tr>';});
+  dead.forEach(p=>{html+='<tr><td><strong>'+(p.partType||'&#8212;')+'</strong></td><td style="color:var(--text2)">'+(p.model||'&#8212;')+'</td><td>'+(p.brand?'<span class="badge badge-blue">'+p.brand+'</span>':'&#8212;')+'</td><td><span class="num" style="color:var(--accent4)">'+p.inStock+'</span></td><td class="sku">'+(p.stockValue>0?'R'+Math.round(p.stockValue).toLocaleString():'&#8212;')+'</td><td class="sku">'+( p.totalCount||0).toLocaleString()+'</td><td><span class="badge badge-yellow">REVIEW</span></td></tr>';});
   html+='</tbody></table></div><div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px">Consider returning to supplier, discounting or bundling with active repairs</div>';
   document.getElementById('deadstock-content').innerHTML=html;
 }
