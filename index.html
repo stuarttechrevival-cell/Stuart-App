@@ -458,6 +458,12 @@ async function loadAll(){
         bestKey = candidates[0].key;
       }
 
+      // Exclude board-level components
+      const excludeTerms = ['audio ic','pmic',' ic ','ic ','fpc','chip'];
+      const nameLower = (f['Name']||'').toString().toLowerCase();
+      const isExcluded = excludeTerms.some(t => nameLower.includes(t));
+      if(isExcluded){ unmatched++; return; }
+
       if(bestKey && partMap[bestKey]){
         partMap[bestKey].salesHistory.push(date);
         if(cost>0&&partMap[bestKey].cost===0)partMap[bestKey].cost=cost;
