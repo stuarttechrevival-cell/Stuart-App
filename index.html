@@ -129,6 +129,8 @@ tbody tr:hover td{background:var(--bg3);}
     <div class="nav-label">Inventory</div>
     <div class="nav-item" data-page="catalogue" onclick="nav(this)">&#8862; Catalogue</div>
     <div class="nav-item" data-page="deadstock" onclick="nav(this)">&#9676; Dead Stock</div>
+    <div class="nav-label">System</div>
+    <div class="nav-item" data-page="diagnostic" onclick="nav(this)">&#128300; Diagnostic</div>
   </aside>
   <main>
 
@@ -287,6 +289,38 @@ tbody tr:hover td{background:var(--bg3);}
       <div class="page-heading">Dead Stock Report</div>
       <div class="page-sub">Zero sales this month AND last month — review, discount or return to supplier</div>
       <div id="deadstock-content"><div class="empty"><div class="empty-title">Sync data to view</div></div></div>
+    </div>
+
+    <!-- DIAGNOSTIC -->
+    <div class="page" id="page-diagnostic">
+      <div class="page-title">System</div>
+      <div class="page-heading">Airtable Diagnostic</div>
+      <div class="page-sub">Run these checks to see exactly what data is coming from Airtable</div>
+      <div id="diag-conn" class="card section-gap">
+        <div class="card-title">Step 1 — API Connection</div>
+        <button onclick="diagConn()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">RUN TEST</button>
+        <pre id="diag-conn-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+      <div class="card section-gap">
+        <div class="card-title">Step 2 — Line Items Field Names</div>
+        <button onclick="diagFields()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">FETCH 3 RECORDS</button>
+        <pre id="diag-fields-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+      <div class="card section-gap">
+        <div class="card-title">Step 3 — Unique Values in "Last desig of device"</div>
+        <button onclick="diagDesig()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">SCAN 500 RECORDS</button>
+        <pre id="diag-desig-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+      <div class="card section-gap">
+        <div class="card-title">Step 4 — Allocation Timestamp Values</div>
+        <button onclick="diagTS()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">CHECK TIMESTAMPS</button>
+        <pre id="diag-ts-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+      <div class="card section-gap">
+        <div class="card-title">Step 5 — Summary Table Fields</div>
+        <button onclick="diagSummary()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">FETCH SUMMARY SAMPLE</button>
+        <pre id="diag-summary-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
     </div>
 
   </main>
@@ -712,6 +746,162 @@ function renderDeadStock(){
   dead.forEach(p=>{html+='<tr><td><strong>'+(p.partType||'&#8212;')+'</strong></td><td style="color:var(--text2)">'+(p.model||'&#8212;')+'</td><td>'+(p.brand?'<span class="badge badge-blue">'+p.brand+'</span>':'&#8212;')+'</td><td><span class="num" style="color:var(--accent4)">'+p.inStock+'</span></td><td class="sku">'+(p.stockValue>0?'R'+Math.round(p.stockValue).toLocaleString():'&#8212;')+'</td><td class="sku">'+p.totalCount.toLocaleString()+'</td><td><span class="badge badge-yellow">REVIEW</span></td></tr>';});
   html+='</tbody></table></div><div style="color:var(--text3);font-family:var(--mono);font-size:11px;margin-top:8px">Consider returning to supplier, discounting or bundling with active repairs</div>';
   document.getElementById('deadstock-content').innerHTML=html;
+}
+
+async function diagFetch(table, params='') {
+  const url = '/api/airtable?base='+BASE_ID+'&table='+encodeURIComponent(table)+params;
+  const res = await fetch(url);
+  return res.json();
+}
+function diagOut(id, text, color) {
+  const el = document.getElementById(id);
+  el.style.color = color || 'var(--text2)';
+  el.textContent = text;
+}
+
+async function diagConn() {
+  diagOut('diag-conn-out', 'Testing...', 'var(--accent4)');
+  try {
+    const data = await diagFetch('Parts Inventory Summary', '&pageSize=1');
+    if (data.records && data.records.length > 0) {
+      diagOut('diag-conn-out', '✓ CONNECTED
+Field names on Parts Inventory Summary:
+' + JSON.stringify(Object.keys(data.records[0].fields), null, 2), 'var(--accent3)');
+    } else {
+      diagOut('diag-conn-out', '✗ ERROR:
+' + JSON.stringify(data, null, 2), 'var(--accent2)');
+    }
+  } catch(e) { diagOut('diag-conn-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+}
+
+async function diagFields() {
+  diagOut('diag-fields-out', 'Fetching...', 'var(--accent4)');
+  try {
+    const data = await diagFetch('Line items', '&pageSize=3');
+    if (data.records && data.records.length > 0) {
+      let out = '✓ Got ' + data.records.length + ' Line Item records
+
+';
+      out += 'FIELD NAMES:
+' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
+      out += '
+
+FIRST RECORD VALUES:
+' + JSON.stringify(data.records[0].fields, null, 2);
+      diagOut('diag-fields-out', out, 'var(--accent3)');
+    } else {
+      diagOut('diag-fields-out', '✗ Error:
+' + JSON.stringify(data, null, 2), 'var(--accent2)');
+    }
+  } catch(e) { diagOut('diag-fields-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+}
+
+async function diagDesig() {
+  diagOut('diag-desig-out', 'Scanning up to 500 records...', 'var(--accent4)');
+  try {
+    let records = [], offset = null, pages = 0;
+    do {
+      let p = '&pageSize=100&fields[]=Last desig of device&fields[]=Allocation Timestamp';
+      if (offset) p += '&offset=' + encodeURIComponent(offset);
+      const data = await diagFetch('Line items', p);
+      if (data.error) { diagOut('diag-desig-out', '✗ Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
+      records = records.concat(data.records);
+      offset = data.offset;
+      pages++;
+      diagOut('diag-desig-out', 'Loading... ' + records.length + ' records scanned', 'var(--accent4)');
+      if (pages >= 5) break;
+    } while(offset);
+
+    const values = {};
+    records.forEach(r => {
+      const v = JSON.stringify(r.fields['Last desig of device'] || 'NULL/EMPTY');
+      values[v] = (values[v]||0) + 1;
+    });
+    const sorted = Object.entries(values).sort((a,b) => b[1]-a[1]);
+    let out = 'Scanned ' + records.length + ' records. Unique values in "Last desig of device":
+
+';
+    sorted.forEach(([v, c]) => { out += c + 'x  ' + v + '
+'; });
+
+    const hasSOLD = sorted.some(([v]) => v.toUpperCase().includes('SOLD'));
+    if (!hasSOLD) out += '
+⚠ WARNING: No "SOLD" value found! Check the values above for what the actual sold value is called.';
+    else out += '
+✓ "SOLD" value found.';
+
+    // Also check timestamps
+    const withTS = records.filter(r => r.fields['Allocation Timestamp']);
+    const noTS = records.filter(r => !r.fields['Allocation Timestamp']);
+    out += '
+
+Allocation Timestamp: ' + withTS.length + ' records HAVE it, ' + noTS.length + ' are EMPTY';
+    if (withTS.length > 0) out += '
+Sample timestamp: ' + withTS[0].fields['Allocation Timestamp'];
+
+    diagOut('diag-desig-out', out, hasSOLD ? 'var(--accent3)' : 'var(--accent2)');
+  } catch(e) { diagOut('diag-desig-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+}
+
+async function diagTS() {
+  diagOut('diag-ts-out', 'Checking...', 'var(--accent4)');
+  try {
+    // Try filtering for SOLD without date
+    const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('{Last desig of device}="SOLD"'));
+    let out = '';
+    if (noDate.error) {
+      out += '✗ Filter {Last desig of device}="SOLD" failed:
+' + JSON.stringify(noDate.error) + '
+
+';
+    } else {
+      out += '✓ Filter "SOLD" (no date): ' + noDate.records.length + ' records returned' + (noDate.offset ? ' + more' : '') + '
+';
+      if (noDate.records.length > 0) {
+        out += 'Timestamp on first: ' + JSON.stringify(noDate.records[0].fields['Allocation Timestamp']) + '
+';
+        out += 'Full fields: ' + JSON.stringify(noDate.records[0].fields, null, 2) + '
+
+';
+      }
+    }
+    // Try with date
+    const ninetyAgo = new Date(Date.now() - 90*86400000).toISOString();
+    const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND({Last desig of device}="SOLD",IS_AFTER({Allocation Timestamp},"'+ninetyAgo+'"))'));
+    if (withDate.error) {
+      out += '✗ Filter SOLD + date failed:
+' + JSON.stringify(withDate.error);
+    } else {
+      out += '✓ Filter "SOLD" + last 90 days: ' + withDate.records.length + ' records returned' + (withDate.offset ? ' + more pages' : '');
+      if (withDate.records.length === 0 && noDate.records && noDate.records.length > 0) {
+        out += '
+⚠ SOLD records exist but none in last 90 days — Allocation Timestamp may be empty or outside range';
+      }
+    }
+    diagOut('diag-ts-out', out, 'var(--text2)');
+  } catch(e) { diagOut('diag-ts-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
+}
+
+async function diagSummary() {
+  diagOut('diag-summary-out', 'Fetching...', 'var(--accent4)');
+  try {
+    const data = await diagFetch('Parts Inventory Summary', '&pageSize=3');
+    if (data.records && data.records.length > 0) {
+      let out = '✓ Got ' + data.records.length + ' records
+
+';
+      out += 'FIELD NAMES:
+' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
+      out += '
+
+FIRST RECORD:
+' + JSON.stringify(data.records[0].fields, null, 2);
+      diagOut('diag-summary-out', out, 'var(--accent3)');
+    } else {
+      diagOut('diag-summary-out', '✗ Error:
+' + JSON.stringify(data, null, 2), 'var(--accent2)');
+    }
+  } catch(e) { diagOut('diag-summary-out', '✗ Exception: ' + e.message, 'var(--accent2)'); }
 }
 </script>
 </body>
