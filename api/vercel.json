@@ -2,10 +2,13 @@
   "version": 2,
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
+    { "src": "diagnostic.html", "use": "@vercel/static" },
     { "src": "api/airtable.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/api/airtable", "dest": "/api/airtable.js" },
+    { "src": "/diagnostic.html", "dest": "/diagnostic.html" },
+    { "src": "/diagnostic", "dest": "/diagnostic.html" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
