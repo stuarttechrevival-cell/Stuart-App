@@ -1,15 +1,13 @@
-
-Copy
-
 {
-  "rewrites": [
+  "version": 2,
+  "routes": [
     {
-      "source": "/api/airtable",
-      "destination": "/api/airtable.js"
+      "src": "/api/airtable",
+      "dest": "/api/airtable.js"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
