@@ -372,9 +372,8 @@ async function loadAll(){
   btn.disabled=true;btn.textContent='SYNCING...';
   setSyncStatus('syncing','Loading Parts Inventory Summary...');
   try {
-    const fields='fields[]=Brand&fields[]=Device Model&fields[]=Part Type&fields[]=Total In Stock&fields[]=Total Used This Month&fields[]=Total Used Last Month&fields[]=Total Used Last 90 Days&fields[]=Cost&fields[]=Suppliers';
-    const appleFilter='filterByFormula='+encodeURIComponent('{Brand}="Apple"');
-    const summaryRecords=await fetchAllPages(SUMMARY_TABLE,'&'+fields+'&'+appleFilter);
+    // Fetch with no field filter first — let Airtable return everything
+    const summaryRecords=await fetchAllPages(SUMMARY_TABLE,'&pageSize=10');
     setSyncStatus('syncing','Processing '+summaryRecords.length+' Apple SKUs...');
 
     const excludeTerms=['audio ic','pmic','charging ic','power ic','touch ic','face id ic','nfc ic',' ic','fpc','chip','baseband','tristar','hydra','tigris'];
@@ -404,8 +403,12 @@ async function loadAll(){
         weightedDaily:dailyRate,salesHistory:[],lastYearHistory:[]
       };
     }).filter(p=>{
+      // Apple only for now
+      if((p.brand||'').toLowerCase()!=='apple') return false;
       const nameLower=(p.model+' '+p.partType).toLowerCase();
-      return !excludeTerms.some(t=>nameLower.includes(t));
+      const isExcluded=excludeTerms.some(t=>nameLower.includes(t));
+      const isUnknown=!p.model||!p.partType||p.model.toLowerCase()==='unknown'||p.partType.toLowerCase()==='unknown'||p.model.trim()===''||p.partType.trim()==='';
+      return !isExcluded && !isUnknown;
     });
 
     const activeCount=allParts.filter(p=>p.used90>0).length;
@@ -833,6 +836,15 @@ async function diagSummary() {
     }
   } catch(e) { diagOut('diag-summary-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
 }
+// Auto-sync on page load and every 30 minutes
+window.addEventListener('load', () => {
+  loadAll();
+  setInterval(() => {
+    if(!document.getElementById('load-btn').disabled){
+      loadAll();
+    }
+  }, 30 * 60 * 1000);
+});
 </script>
 </body>
 </html>
