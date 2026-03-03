@@ -373,7 +373,7 @@ async function loadAll(){
   setSyncStatus('syncing','Loading Parts Inventory Summary...');
   try {
     // Fetch with no field filter first — let Airtable return everything
-    const summaryRecords=await fetchAllPages(SUMMARY_TABLE,'&pageSize=10');
+    const summaryRecords=await fetchAllPages(SUMMARY_TABLE);
     setSyncStatus('syncing','Processing '+summaryRecords.length+' Apple SKUs...');
 
     const excludeTerms=['audio ic','pmic','charging ic','power ic','touch ic','face id ic','nfc ic',' ic','fpc','chip','baseband','tristar','hydra','tigris'];
