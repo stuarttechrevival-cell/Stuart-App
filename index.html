@@ -525,6 +525,8 @@ function renderForecast(){
     const coverDays = monthlyRate>=10 ? 14 : monthlyRate>=5 ? 10 : 7;
     const totalCoverDays = coverDays + LEAD_TIME_DAYS;
     const needed = Math.ceil(dailyRate * totalCoverDays);
+    const targetStock = Math.ceil(dailyRate * totalCoverDays);
+const toOrder = Math.max(0, Math.max(targetStock - p.inStock, Math.ceil(dailyRate*7)));
     const toOrder = Math.max(0, needed - p.inStock);
     const daysAfterOrder = dailyRate>0 ? Math.floor((p.inStock+toOrder)/dailyRate) : 999;
     const daysNow = dailyRate>0 ? Math.floor(p.inStock/dailyRate) : 999;
@@ -594,7 +596,8 @@ function renderTopMovers(){
   const rangeDays=parseInt(document.getElementById('tm-range')?.value||30);
   const brand=document.getElementById('tm-brand')?.value||'';
   const tbl=parts=>parts.length?'<div class="table-wrap"><table><thead><tr><th>#</th><th>Part Type</th><th>Model</th><th>Brand</th><th>Sold/'+rangeDays+'d</th><th>Daily</th><th>Weekly</th><th>In Stock</th><th>Days Cover</th></tr></thead><tbody>'+parts.map((p,i)=>'<tr><td class="sku">'+(i+1)+'</td><td><strong>'+p.partType+'</strong></td><td style="color:var(--text2)">'+p.model+'</td><td>'+(p.brand?'<span class="badge badge-blue">'+p.brand+'</span>':'&#8212;')+'</td><td><span class="num" style="color:var(--accent4)">'+p.salesInRange+'</span></td><td><span class="num" style="color:var(--accent)">'+(p.salesInRange/rangeDays).toFixed(2)+'</span></td><td><span class="num" style="color:var(--accent)">'+(p.salesInRange/rangeDays*7).toFixed(1)+'</span></td><td><span class="num" style="color:var(--accent3)">'+p.inStock+'</span></td><td><span class="num" style="color:'+(p.daysRemaining<=7?'var(--accent2)':p.daysRemaining<=14?'var(--accent4)':'var(--accent3)')+'">'+( p.daysRemaining===999?'&#8734;':p.daysRemaining+'d')+'</span></td></tr>').join('')+'</tbody></table></div>':'<div class="empty"><div class="empty-title">No data</div></div>';
-  const base=allParts.filter(p=>(!brand||p.brand===brand)).map(p=>({...p,salesInRange:getSalesInRange(p,rangeDays)}));
+  function getSummaryUsage(p,days){if(days<=7)return p.last7||Math.round((p.usedMonth||0)/4);if(days<=14)return p.last14||Math.round((p.usedMonth||0)/2);if(days<=30)return p.usedMonth||0;if(days<=60)return p.last60||Math.round((p.used90||0)*0.67);return p.used90||0;}
+const base=allParts.filter(p=>(!brand||p.brand===brand)).map(p=>({...p,salesInRange:getSummaryUsage(p,rangeDays)}));;
   document.getElementById('tab-top-sold').innerHTML=tbl([...base].filter(p=>p.salesInRange>0).sort((a,b)=>b.salesInRange-a.salesInRange).slice(0,20));
   document.getElementById('tab-top-daily').innerHTML=tbl([...base].filter(p=>p.salesInRange>0).sort((a,b)=>(b.salesInRange/rangeDays)-(a.salesInRange/rangeDays)).slice(0,20));
   document.getElementById('tab-top-cover').innerHTML=tbl([...base].filter(p=>p.weightedDaily>0).sort((a,b)=>a.daysRemaining-b.daysRemaining).slice(0,20));
