@@ -373,7 +373,8 @@ async function loadAll(){
   setSyncStatus('syncing','Loading Parts Inventory Summary...');
   try {
     // Fetch with no field filter first — let Airtable return everything
-    const summaryRecords=await fetchAllPages(SUMMARY_TABLE);
+    const summaryFields='&fields[]=Brand&fields[]=Device Model&fields[]=Part Type&fields[]=Total In Stock&fields[]=Total Used This Month&fields[]=Total Used Last Month&fields[]=Total Used Last 90 Days&fields[]=Cost&fields[]=Suppliers';
+    const summaryRecords=await fetchAllPages(SUMMARY_TABLE, summaryFields);
     setSyncStatus('syncing','Processing '+summaryRecords.length+' Apple SKUs...');
 
     const excludeTerms=['audio ic','pmic','charging ic','power ic','touch ic','face id ic','nfc ic',' ic','fpc','chip','baseband','tristar','hydra','tigris','stripped'];
@@ -524,10 +525,10 @@ function renderForecast(){
     // Dynamic cover: fast movers get more buffer, slow movers less
     const coverDays = monthlyRate>=10 ? 14 : monthlyRate>=5 ? 10 : 7;
     const totalCoverDays = coverDays + LEAD_TIME_DAYS;
-    const needed = Math.ceil(dailyRate * totalCoverDays);
     const targetStock = Math.ceil(dailyRate * totalCoverDays);
-const toOrder = Math.max(0, Math.max(targetStock - p.inStock, Math.ceil(dailyRate*7)));
-    const toOrder = Math.max(0, needed - p.inStock);
+    const weeklyDemand = Math.ceil(dailyRate * 7);
+    // Order enough to reach target stock, minimum 1 week supply if we're ordering anything
+    const toOrder = p.inStock >= targetStock ? 0 : Math.max(targetStock - p.inStock, weeklyDemand);
     const daysAfterOrder = dailyRate>0 ? Math.floor((p.inStock+toOrder)/dailyRate) : 999;
     const daysNow = dailyRate>0 ? Math.floor(p.inStock/dailyRate) : 999;
     const velocity = monthlyRate>=10 ? 'FAST' : monthlyRate>=5 ? 'MED' : 'SLOW';
@@ -596,8 +597,14 @@ function renderTopMovers(){
   const rangeDays=parseInt(document.getElementById('tm-range')?.value||30);
   const brand=document.getElementById('tm-brand')?.value||'';
   const tbl=parts=>parts.length?'<div class="table-wrap"><table><thead><tr><th>#</th><th>Part Type</th><th>Model</th><th>Brand</th><th>Sold/'+rangeDays+'d</th><th>Daily</th><th>Weekly</th><th>In Stock</th><th>Days Cover</th></tr></thead><tbody>'+parts.map((p,i)=>'<tr><td class="sku">'+(i+1)+'</td><td><strong>'+p.partType+'</strong></td><td style="color:var(--text2)">'+p.model+'</td><td>'+(p.brand?'<span class="badge badge-blue">'+p.brand+'</span>':'&#8212;')+'</td><td><span class="num" style="color:var(--accent4)">'+p.salesInRange+'</span></td><td><span class="num" style="color:var(--accent)">'+(p.salesInRange/rangeDays).toFixed(2)+'</span></td><td><span class="num" style="color:var(--accent)">'+(p.salesInRange/rangeDays*7).toFixed(1)+'</span></td><td><span class="num" style="color:var(--accent3)">'+p.inStock+'</span></td><td><span class="num" style="color:'+(p.daysRemaining<=7?'var(--accent2)':p.daysRemaining<=14?'var(--accent4)':'var(--accent3)')+'">'+( p.daysRemaining===999?'&#8734;':p.daysRemaining+'d')+'</span></td></tr>').join('')+'</tbody></table></div>':'<div class="empty"><div class="empty-title">No data</div></div>';
-  function getSummaryUsage(p,days){if(days<=7)return p.last7||Math.round((p.usedMonth||0)/4);if(days<=14)return p.last14||Math.round((p.usedMonth||0)/2);if(days<=30)return p.usedMonth||0;if(days<=60)return p.last60||Math.round((p.used90||0)*0.67);return p.used90||0;}
-const base=allParts.filter(p=>(!brand||p.brand===brand)).map(p=>({...p,salesInRange:getSummaryUsage(p,rangeDays)}));;
+  function getSummaryUsage(p,days){
+    if(days<=7)  return p.last7  || Math.round((p.usedMonth||0)/4);
+    if(days<=14) return p.last14 || Math.round((p.usedMonth||0)/2);
+    if(days<=30) return p.usedMonth||0;
+    if(days<=60) return p.last60 || Math.round((p.used90||0)*0.67);
+    return p.used90||0;
+  }
+  const base=allParts.filter(p=>(!brand||p.brand===brand)).map(p=>({...p,salesInRange:getSummaryUsage(p,rangeDays)}));
   document.getElementById('tab-top-sold').innerHTML=tbl([...base].filter(p=>p.salesInRange>0).sort((a,b)=>b.salesInRange-a.salesInRange).slice(0,20));
   document.getElementById('tab-top-daily').innerHTML=tbl([...base].filter(p=>p.salesInRange>0).sort((a,b)=>(b.salesInRange/rangeDays)-(a.salesInRange/rangeDays)).slice(0,20));
   document.getElementById('tab-top-cover').innerHTML=tbl([...base].filter(p=>p.weightedDaily>0).sort((a,b)=>a.daysRemaining-b.daysRemaining).slice(0,20));
@@ -609,7 +616,7 @@ function renderTrends(){
     const key=p.model||'Unknown';
     if(!deviceMap[key])deviceMap[key]={model:key,brand:p.brand,recent:0,previous:0,parts:[]};
     deviceMap[key].recent+=p.last30;
-    deviceMap[key].previous+=getSalesInRange(p,60)-p.last30;
+    deviceMap[key].previous+=(p.last60||Math.round((p.used90||0)*0.67))-p.last30;
     if(p.partType)deviceMap[key].parts.push(p.partType);
   });
   const devices=Object.values(deviceMap).filter(d=>d.recent>0||d.previous>0).map(d=>{
@@ -638,9 +645,10 @@ function renderSupplier(){
   const month=now.getMonth();
   const seasonMult=month===11?1.4:month===0?0.75:(month===5||month===6)?1.2:1.0;
   const catW={'battery':1.6,'lcd':1.5,'screen':1.5,'oled':1.5,'charging dock':1.4,'charging port':1.4,'flex':1.2,'camera':1.1};
-  const eligible=allParts.filter(p=>getSalesInRange(p,rangeDays)>=MIN_SALES);
+  function getSupSales(p,days){if(days<=7)return p.last7||Math.round((p.usedMonth||0)/4);if(days<=14)return p.last14||Math.round((p.usedMonth||0)/2);return p.usedMonth||0;}
+  const eligible=allParts.filter(p=>getSupSales(p,rangeDays)>=MIN_SALES);
   const orderList=eligible.map(p=>{
-    const sales=getSalesInRange(p,rangeDays);
+    const sales=getSupSales(p,rangeDays);
     const daily=sales/rangeDays;
     const pl=(p.partType||'').toLowerCase();
     let cw=1.0;for(const [k,w] of Object.entries(catW)){if(pl.includes(k)){cw=w;break;}}
