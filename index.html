@@ -405,8 +405,11 @@ async function loadAll(){
     }).filter(p=>{
       // Must have valid model and part type
       const hasModel = p.model && p.model.trim()!=='' && p.model.toLowerCase()!=='unknown' && p.model.length > 1;
-      const hasPartType = p.partType && p.partType.trim()!=='' && p.partType.toLowerCase()!=='unknown' && p.partType.length > 1;
+      const hasPartType = p.partType && p.partType.trim()!=='' && p.partType.toLowerCase()!=='unknown' && p.partType.toLowerCase()!=='unknown part' && p.partType.length > 1;
       if(!hasModel || !hasPartType) return false;
+      // Exclude service items with no stockable part
+      const ptl = p.partType.toLowerCase();
+      if(ptl.includes('advanced repair') || ptl.includes('labour') || ptl.includes('service')) return false;
       // Apple only
       if(!p.brand || !p.brand.toLowerCase().includes('apple')) return false;
       // Exclude board-level components
@@ -537,7 +540,7 @@ function renderForecast(){
   const totalUnits=orderList.reduce((a,p)=>a+p.toOrder,0);
   const weekOf=now.toLocaleDateString('en-ZA',{day:'numeric',month:'long',year:'numeric'});
 
-  let html='<div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:18px;border-radius:2px;margin-bottom:20px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px">Weekly Order Recommendation &middot; '+rangeDays+'-Day Basis</div><div style="font-size:16px;font-weight:600;margin-bottom:8px">Week of '+weekOf+'</div><div style="color:var(--text2);font-size:13px;line-height:1.7">Based on your last <strong style="color:var(--text)">'+rangeDays+' days</strong> of sales, you need to order <strong style="color:var(--accent)">'+totalUnits+' units</strong> across <strong style="color:var(--text)">'+orderList.length+' parts</strong> to cover the next 7 days. Quantities use a weighted model (70% recent velocity, 20% same period last year, 10% 90-day average) with a '+LEAD_TIME_DAYS+'-day lead time buffer. Only parts with '+MIN_SALES+'+ sales in the selected period are included.</div></div>';
+  let html='<div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:18px;border-radius:2px;margin-bottom:20px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px">Weekly Order Recommendation &middot; '+rangeDays+'-Day Basis</div><div style="font-size:16px;font-weight:600;margin-bottom:8px">Week of '+weekOf+'</div><div style="color:var(--text2);font-size:13px;line-height:1.7">Based on your last <strong style="color:var(--text)">'+rangeDays+' days</strong> of sales, you need to order <strong style="color:var(--accent)">'+totalUnits+' units</strong> across <strong style="color:var(--text)">'+orderList.length+' parts</strong> to cover the next 7 days. Quantities use a rolling 90-day average with dynamic cover (FAST movers 14d, MED 10d, SLOW 7d) plus a '+LEAD_TIME_DAYS+'-day lead time buffer. Only parts with '+MIN_SALES+'+ uses in the last 90 days are included.</div></div>';
 
   for(const [brand,parts] of brandsSorted){
     const brandTotal=parts.reduce((s,p)=>s+p.toOrder,0);
