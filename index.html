@@ -301,23 +301,23 @@ tbody tr:hover td{background:var(--bg3);}
         <pre id="diag-conn-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
       <div class="card section-gap">
-        <div class="card-title">Step 2 — Line Items Field Names</div>
-        <button onclick="diagFields()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">FETCH 3 RECORDS</button>
+        <div class="card-title">Step 2 — Summary Table Fields</div>
+        <button onclick="diagFields()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">FETCH SUMMARY SAMPLE</button>
         <pre id="diag-fields-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
       <div class="card section-gap">
-        <div class="card-title">Step 3 — Unique Values in "Last desig of device"</div>
-        <button onclick="diagDesig()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">SCAN 500 RECORDS</button>
+        <div class="card-title">Step 3 — Usage Fields Sample</div>
+        <button onclick="diagDesig()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">CHECK USAGE FIELDS</button>
         <pre id="diag-desig-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
       <div class="card section-gap">
         <div class="card-title">Step 4 — Allocation TimeStamp Values</div>
-        <button onclick="diagTS()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">CHECK TIMESTAMPS</button>
+        <button onclick="diagTS()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">CHECK BRAND FIELD</button>
         <pre id="diag-ts-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
       <div class="card section-gap">
-        <div class="card-title">Step 5 — Summary Table Fields</div>
-        <button onclick="diagSummary()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">FETCH SUMMARY SAMPLE</button>
+        <div class="card-title">Step 5 — Active Parts Check</div>
+        <button onclick="diagSummary()" style="background:var(--accent);color:#000;border:none;padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">CHECK ACTIVE PARTS</button>
         <pre id="diag-summary-out" style="color:var(--text2);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
     </div>
@@ -376,13 +376,13 @@ async function loadAll(){
     const summaryRecords=await fetchAllPages(SUMMARY_TABLE);
     setSyncStatus('syncing','Processing '+summaryRecords.length+' Apple SKUs...');
 
-    const excludeTerms=['audio ic','pmic','charging ic','power ic','touch ic','face id ic','nfc ic',' ic','fpc','chip','baseband','tristar','hydra','tigris'];
+    const excludeTerms=['audio ic','pmic','charging ic','power ic','touch ic','face id ic','nfc ic',' ic','fpc','chip','baseband','tristar','hydra','tigris','stripped'];
 
     allParts=summaryRecords.map(r=>{
       const f=r.fields;
-      const brand=(f['Brand']||'').toString().trim();
-      const model=(f['Device Model']||'').toString().trim();
-      const partType=(f['Part Type']||'').toString().trim();
+      const rawBrand=f['Brand']; const brand=(Array.isArray(rawBrand)?rawBrand[0]:rawBrand||'').toString().trim();
+      const rawModel=f['Device Model']; const model=(Array.isArray(rawModel)?rawModel[0]:rawModel||'').toString().trim();
+      const rawPT=f['Part Type']; const partType=(Array.isArray(rawPT)?rawPT[0]:rawPT||'').toString().trim();
       const inStock=Number(f['Total In Stock'])||0;
       const usedMonth=Number(f['Total Used This Month'])||0;
       const usedLastMonth=Number(f['Total Used Last Month'])||0;
@@ -403,12 +403,16 @@ async function loadAll(){
         weightedDaily:dailyRate,salesHistory:[],lastYearHistory:[]
       };
     }).filter(p=>{
-      // Apple only for now
-      if((p.brand||'').toLowerCase()!=='apple') return false;
+      // Must have valid model and part type
+      const hasModel = p.model && p.model.trim()!=='' && p.model.toLowerCase()!=='unknown' && p.model.length > 1;
+      const hasPartType = p.partType && p.partType.trim()!=='' && p.partType.toLowerCase()!=='unknown' && p.partType.length > 1;
+      if(!hasModel || !hasPartType) return false;
+      // Apple only
+      if(!p.brand || !p.brand.toLowerCase().includes('apple')) return false;
+      // Exclude board-level components
       const nameLower=(p.model+' '+p.partType).toLowerCase();
-      const isExcluded=excludeTerms.some(t=>nameLower.includes(t));
-      const isUnknown=!p.model||!p.partType||p.model.toLowerCase()==='unknown'||p.partType.toLowerCase()==='unknown'||p.model.trim()===''||p.partType.trim()==='';
-      return !isExcluded && !isUnknown;
+      if(excludeTerms.some(t=>nameLower.includes(t))) return false;
+      return true;
     });
 
     const activeCount=allParts.filter(p=>p.used90>0).length;
@@ -729,113 +733,83 @@ function diagOut(id, text, color) {
 async function diagConn() {
   diagOut('diag-conn-out', 'Testing...', 'var(--accent4)');
   try {
-    const data = await diagFetch('Parts Inventory Summary', '&pageSize=1');
+    const data = await diagFetch(SUMMARY_TABLE, '&pageSize=1');
     if (data.records && data.records.length > 0) {
-      diagOut('diag-conn-out', '\u2713 CONNECTED\nField names on Parts Inventory Summary:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2), 'var(--accent3)');
+      diagOut('diag-conn-out', 'CONNECTED - All field names on Parts Inventory Summary:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2), 'var(--accent3)');
     } else {
-      diagOut('diag-conn-out', '\u2717 ERROR:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
+      diagOut('diag-conn-out', 'ERROR:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
     }
-  } catch(e) { diagOut('diag-conn-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-conn-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagFields() {
-  diagOut('diag-fields-out', 'Fetching...', 'var(--accent4)');
+  diagOut('diag-fields-out', 'Fetching sample records from Summary...', 'var(--accent4)');
   try {
-    const data = await diagFetch('Line items', '&pageSize=3');
+    const data = await diagFetch(SUMMARY_TABLE, '&pageSize=3');
     if (data.records && data.records.length > 0) {
-      let out = '\u2713 Got ' + data.records.length + ' Line Item records\n\n';
+      let out = 'Got ' + data.records.length + ' Summary records\n\n';
       out += 'FIELD NAMES:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
       out += '\n\nFIRST RECORD VALUES:\n' + JSON.stringify(data.records[0].fields, null, 2);
       diagOut('diag-fields-out', out, 'var(--accent3)');
     } else {
-      diagOut('diag-fields-out', '\u2717 Error:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
+      diagOut('diag-fields-out', 'Error:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
     }
-  } catch(e) { diagOut('diag-fields-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-fields-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagDesig() {
-  diagOut('diag-desig-out', 'Scanning up to 500 records...', 'var(--accent4)');
+  diagOut('diag-desig-out', 'Checking usage fields...', 'var(--accent4)');
   try {
-    let records = [], offset = null, pages = 0;
-    do {
-      let p = '&pageSize=100&fields[]=Last desig of device&fields[]=Allocation TimeStamp';
-      if (offset) p += '&offset=' + encodeURIComponent(offset);
-      const data = await diagFetch('Line items', p);
-      if (data.error) { diagOut('diag-desig-out', '\u2717 Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
-      records = records.concat(data.records);
-      offset = data.offset;
-      pages++;
-      diagOut('diag-desig-out', 'Loading... ' + records.length + ' records scanned', 'var(--accent4)');
-      if (pages >= 5) break;
-    } while(offset);
-
-    const values = {};
-    records.forEach(r => {
-      const v = JSON.stringify(r.fields['Last desig of device'] || 'NULL/EMPTY');
-      values[v] = (values[v]||0) + 1;
+    const data = await diagFetch(SUMMARY_TABLE, '&pageSize=10');
+    if (data.error) { diagOut('diag-desig-out', 'Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
+    let out = 'Sample of ' + data.records.length + ' records\n\n';
+    data.records.forEach((r,i) => {
+      const f = r.fields;
+      out += (i+1) + '. ' + (f['Device Model']||'?') + ' - ' + (f['Part Type']||'?') + '\n';
+      out += '   Brand: ' + JSON.stringify(f['Brand']) + '\n';
+      out += '   In Stock: ' + f['Total In Stock'] + ' | This Month: ' + f['Total Used This Month'] + ' | 90 Days: ' + f['Total Used Last 90 Days'] + '\n\n';
     });
-    const sorted = Object.entries(values).sort((a,b) => b[1]-a[1]);
-    let out = 'Scanned ' + records.length + ' records. Unique values in "Last desig of device":\n\n';
-    sorted.forEach(([v, c]) => { out += c + 'x  ' + v + '\n'; });
-
-    const hasSOLD = sorted.some(([v]) => v.toUpperCase().includes('SOLD'));
-    if (!hasSOLD) out += '\n\u26A0 WARNING: No "SOLD" value found! Check the values above for what the actual sold value is called.';
-    else out += '\n\u2713 "SOLD" value found.';
-
-    // Also check timestamps
-    const withTS = records.filter(r => r.fields['Allocation TimeStamp']);
-    const noTS = records.filter(r => !r.fields['Allocation TimeStamp']);
-    out += '\n\nAllocation TimeStamp: ' + withTS.length + ' records HAVE it, ' + noTS.length + ' are EMPTY';
-    if (withTS.length > 0) out += '\nSample timestamp: ' + withTS[0].fields['Allocation TimeStamp'];
-
-    diagOut('diag-desig-out', out, hasSOLD ? 'var(--accent3)' : 'var(--accent2)');
-  } catch(e) { diagOut('diag-desig-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
+    diagOut('diag-desig-out', out, 'var(--accent3)');
+  } catch(e) { diagOut('diag-desig-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagTS() {
-  diagOut('diag-ts-out', 'Checking...', 'var(--accent4)');
+  diagOut('diag-ts-out', 'Checking Brand field values...', 'var(--accent4)');
   try {
-    // Try filtering for SOLD without date
-    const noDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('FIND("SOLD",ARRAYJOIN({Last desig of device}))'));
-    let out = '';
-    if (noDate.error) {
-      out += '\u2717 Filter FIND("SOLD",ARRAYJOIN({Last desig of device})) failed:\n' + JSON.stringify(noDate.error) + '\n\n';
-    } else {
-      out += '\u2713 Filter "SOLD" (no date): ' + noDate.records.length + ' records returned' + (noDate.offset ? ' + more' : '') + '\n';
-      if (noDate.records.length > 0) {
-        out += 'Timestamp on first: ' + JSON.stringify(noDate.records[0].fields['Allocation TimeStamp']) + '\n';
-        out += 'Full fields: ' + JSON.stringify(noDate.records[0].fields, null, 2) + '\n\n';
-      }
-    }
-    // Try with date
-    const ninetyAgo = new Date(Date.now() - 90*86400000).toISOString();
-    const withDate = await diagFetch('Line items', '&pageSize=5&filterByFormula='+encodeURIComponent('AND(FIND("SOLD",ARRAYJOIN({Last desig of device})),IS_AFTER({Allocation TimeStamp},"'+ninetyAgo+'"))'));
-    if (withDate.error) {
-      out += '\u2717 Filter SOLD + date failed:\n' + JSON.stringify(withDate.error);
-    } else {
-      out += '\u2713 Filter "SOLD" + last 90 days: ' + withDate.records.length + ' records returned' + (withDate.offset ? ' + more pages' : '');
-      if (withDate.records.length === 0 && noDate.records && noDate.records.length > 0) {
-        out += '\n\u26A0 SOLD records exist but none in last 90 days — Allocation TimeStamp may be empty or outside range';
-      }
-    }
+    const data = await diagFetch(SUMMARY_TABLE, '&pageSize=20');
+    if (data.error) { diagOut('diag-ts-out', 'Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
+    const brands = {};
+    data.records.forEach(r => {
+      const b = JSON.stringify(r.fields['Brand'] || 'null');
+      brands[b] = (brands[b]||0) + 1;
+    });
+    let out = 'Brand field values in first 20 records:\n\n';
+    Object.entries(brands).sort((a,b)=>b[1]-a[1]).forEach(([b,c]) => { out += c + 'x  ' + b + '\n'; });
+    out += '\nIf Brand shows as "recXXX" it is a linked field - needs array handling.';
     diagOut('diag-ts-out', out, 'var(--text2)');
-  } catch(e) { diagOut('diag-ts-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
+  } catch(e) { diagOut('diag-ts-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
 
 async function diagSummary() {
-  diagOut('diag-summary-out', 'Fetching...', 'var(--accent4)');
+  diagOut('diag-summary-out', 'Checking active parts (used in last 90 days)...', 'var(--accent4)');
   try {
-    const data = await diagFetch('Parts Inventory Summary', '&pageSize=3');
-    if (data.records && data.records.length > 0) {
-      let out = '\u2713 Got ' + data.records.length + ' records\n\n';
-      out += 'FIELD NAMES:\n' + JSON.stringify(Object.keys(data.records[0].fields), null, 2);
-      out += '\n\nFIRST RECORD:\n' + JSON.stringify(data.records[0].fields, null, 2);
-      diagOut('diag-summary-out', out, 'var(--accent3)');
-    } else {
-      diagOut('diag-summary-out', '\u2717 Error:\n' + JSON.stringify(data, null, 2), 'var(--accent2)');
+    const data = await diagFetch(SUMMARY_TABLE, '&pageSize=100');
+    if (data.error) { diagOut('diag-summary-out', 'Error: ' + JSON.stringify(data.error), 'var(--accent2)'); return; }
+    const active = data.records.filter(r => Number(r.fields['Total Used Last 90 Days']||0) > 0);
+    const brands = {};
+    active.forEach(r => {
+      const b = JSON.stringify(r.fields['Brand']||'null');
+      brands[b] = (brands[b]||0) + 1;
+    });
+    let out = 'Total records: ' + data.records.length + ' | Active (90d): ' + active.length + '\n\nBrand breakdown:\n';
+    Object.entries(brands).sort((a,b)=>b[1]-a[1]).forEach(([b,c]) => { out += c + 'x  ' + b + '\n'; });
+    if (active.length > 0) {
+      out += '\nSample active part:\n' + JSON.stringify(active[0].fields, null, 2);
     }
-  } catch(e) { diagOut('diag-summary-out', '\u2717 Exception: ' + e.message, 'var(--accent2)'); }
+    diagOut('diag-summary-out', out, 'var(--accent3)');
+  } catch(e) { diagOut('diag-summary-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
+
 // Auto-sync on page load and every 30 minutes
 window.addEventListener('load', () => {
   loadAll();
