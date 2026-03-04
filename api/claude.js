@@ -5,12 +5,15 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' }); return; }
+
   try {
-    'x-api-key': process.env.ANTHROPIC_API_KEY, {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': 'sk-ant-api03-o3MjDGQMUHJMolqI0JJchDQBBQBmrEDlQa0CzlNq5ZwHpwBVFqMwi3FHxs3WTDFAIDoFPBzMSXJY9RWJGFmQ-mdAXuAAA',
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify(req.body)
