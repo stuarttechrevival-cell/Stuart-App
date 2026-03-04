@@ -1,13 +1,6 @@
 {
   "version": 2,
-  "routes": [
-    {
-      "src": "/api/airtable",
-      "dest": "/api/airtable.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
