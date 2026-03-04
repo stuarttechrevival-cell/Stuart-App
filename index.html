@@ -489,8 +489,7 @@ async function loadAll(){
       const sm=smUsage[smKey]||{sm90:0,smMonth:0,smLastMonth:0,sm60:0};
 
       // Combined usage = Summary (INV Date) + SM Orders
-      // SM uses 180d window so halve it to get 90d equivalent rate
-      const combined90=used90+Math.round(sm.sm90/2);
+      const combined90=used90+sm.sm90;
       const combinedMonth=usedMonth+sm.smMonth;
       const combinedLastMonth=usedLastMonth+sm.smLastMonth;
 
@@ -517,6 +516,11 @@ async function loadAll(){
       const ptl = p.partType.toLowerCase();
       if(ptl.includes('advanced repair') || ptl.includes('labour') || ptl.includes('service')) return false;
       if(!p.brand || !p.brand.toLowerCase().includes('apple')) return false;
+      // Exclude end-of-life models
+      const modelL=p.model.toLowerCase();
+      if(/iphone\s*5/.test(modelL)) return false;
+      if(/iphone\s*6[^s789]/.test(modelL)||modelL==='iphone 6') return false;
+      if(modelL.includes('iphone 6 plus')) return false;
       const nameLower=(p.model+' '+p.partType).toLowerCase();
       if(excludeTerms.some(t=>nameLower.includes(t))) return false;
       return true;
