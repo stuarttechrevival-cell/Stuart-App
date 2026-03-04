@@ -299,7 +299,14 @@ tbody tr:hover td{background:var(--bg3);}
 
       <!-- Add Order Form -->
       <div class="card section-gap" id="po-form-card">
-        <div class="card-title">Log New Purchase Order</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div class="card-title" style="margin:0">Log New Purchase Order</div>
+          <div>
+            <input type="file" id="po-pdf-input" accept=".pdf" style="display:none" onchange="extractInvoice(this)">
+            <button onclick="document.getElementById('po-pdf-input').click()" id="po-upload-btn" style="background:var(--bg3);border:1px solid var(--accent);color:var(--accent);padding:8px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:1px">&#128196; SCAN INVOICE PDF</button>
+          </div>
+        </div>
+        <div id="po-extract-status" style="display:none;padding:10px 14px;border-radius:2px;font-family:var(--mono);font-size:12px;margin-bottom:12px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
           <div>
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;letter-spacing:1px">SUPPLIER</div>
@@ -1081,6 +1088,111 @@ function deletePO(id){
   if(!confirm('Delete this purchase order?')) return;
   savePOs(getPOs().filter(o=>o.id!==id));
   renderPurchaseOrders();
+}
+
+async function extractInvoice(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value = '';
+
+  const statusEl = document.getElementById('po-extract-status');
+  const btn = document.getElementById('po-upload-btn');
+
+  function setStatus(msg, color){
+    statusEl.style.display = 'block';
+    statusEl.style.background = color==='green'?'rgba(16,185,129,0.1)':color==='red'?'rgba(239,68,68,0.1)':'rgba(251,191,36,0.1)';
+    statusEl.style.border = '1px solid '+(color==='green'?'var(--accent)':color==='red'?'var(--accent2)':'var(--accent3)');
+    statusEl.style.color = color==='green'?'var(--accent)':color==='red'?'var(--accent2)':'var(--accent3)';
+    statusEl.textContent = msg;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ READING INVOICE...';
+  setStatus('Uploading and reading invoice — this takes a few seconds...', 'yellow');
+
+  try {
+    // Convert PDF to base64
+    const base64 = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result.split(',')[1]);
+      reader.onerror = () => rej(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+
+    // Call Claude API to extract invoice data
+    const prompt = `You are extracting data from a supplier invoice for a mobile phone parts repair business.
+
+Extract the following and respond ONLY with valid JSON, no other text:
+{
+  "supplier": "supplier company name",
+  "poNumber": "invoice or PO number if present, else empty string",
+  "dateOrdered": "date of invoice in YYYY-MM-DD format if found, else empty string",
+  "lines": [
+    {
+      "partType": "part category e.g. Battery, LCD, Charging Dock, Back Glass, Camera",
+      "model": "device model e.g. iPhone 13, Samsung Galaxy S22 — extract from description",
+      "qty": 1,
+      "unitCost": 0.00
+    }
+  ]
+}
+
+Rules:
+- partType should be the generic part category, not the full product description
+- model should be the device model only, stripped of brand if Apple (e.g. "iPhone 13" not "Apple iPhone 13")
+- qty must be a number
+- unitCost must be a number (unit price excluding VAT if both shown)
+- If you cannot determine a field, use an empty string or 0
+- Include ALL line items from the invoice`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [{
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: base64 }
+          }, {
+            type: 'text',
+            text: prompt
+          }]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    if(data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+
+    const text = data.content.map(c=>c.text||'').join('');
+    const clean = text.replace(/```json|```/g,'').trim();
+    const invoice = JSON.parse(clean);
+
+    // Fill in form
+    if(invoice.supplier) document.getElementById('po-supplier').value = invoice.supplier;
+    if(invoice.poNumber) document.getElementById('po-number').value = invoice.poNumber;
+    if(invoice.dateOrdered) document.getElementById('po-date-ordered').value = invoice.dateOrdered;
+
+    // Clear existing lines and add extracted ones
+    document.getElementById('po-lines').innerHTML = '';
+    poLineCount = 0;
+    if(invoice.lines && invoice.lines.length){
+      invoice.lines.forEach(l => addPOLine(l.partType||'', l.model||'', l.qty||'', l.unitCost||''));
+      setStatus('✓ Extracted ' + invoice.lines.length + ' line item' + (invoice.lines.length!==1?'s':'') + ' from invoice — please review and confirm before saving', 'green');
+    } else {
+      setStatus('Invoice read but no line items found — please fill in manually', 'yellow');
+    }
+
+  } catch(err) {
+    console.error('Invoice extraction error:', err);
+    setStatus('✕ Could not read invoice: ' + err.message, 'red');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '📄 SCAN INVOICE PDF';
 }
 
 function renderPurchaseOrders(){
