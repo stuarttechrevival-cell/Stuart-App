@@ -126,6 +126,7 @@ tbody tr:hover td{background:var(--bg3);}
     <div class="nav-item" data-page="trends" onclick="nav(this)">&#8599; Device Trends</div>
     <div class="nav-item" data-page="supplier" onclick="nav(this)">&#128230; Supplier Orders</div>
     <div class="nav-item" data-page="cost" onclick="nav(this)">&#128176; Cost Intelligence</div>
+    <div class="nav-item" data-page="purchases" onclick="nav(this)">&#128203; Purchase Orders</div>
     <div class="nav-label">Inventory</div>
     <div class="nav-item" data-page="catalogue" onclick="nav(this)">&#8862; Catalogue</div>
     <div class="nav-item" data-page="deadstock" onclick="nav(this)">&#9676; Dead Stock</div>
@@ -290,6 +291,58 @@ tbody tr:hover td{background:var(--bg3);}
       <div id="deadstock-content"><div class="empty"><div class="empty-title">Sync data to view</div></div></div>
     </div>
 
+    <!-- PURCHASE ORDERS -->
+    <div class="page" id="page-purchases">
+      <div class="page-title">Procurement</div>
+      <div class="page-heading">Purchase Orders</div>
+      <div class="page-sub">Log supplier invoices to track actual ordering patterns and improve forecast accuracy</div>
+
+      <!-- Add Order Form -->
+      <div class="card section-gap" id="po-form-card">
+        <div class="card-title">Log New Purchase Order</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;letter-spacing:1px">SUPPLIER</div>
+            <input id="po-supplier" class="search-input" style="width:100%" placeholder="e.g. CellParts, Mobyfy...">
+          </div>
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;letter-spacing:1px">INVOICE / PO NUMBER</div>
+            <input id="po-number" class="search-input" style="width:100%" placeholder="e.g. INV-2024-001">
+          </div>
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;letter-spacing:1px">DATE ORDERED</div>
+            <input id="po-date-ordered" type="date" class="search-input" style="width:100%">
+          </div>
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;letter-spacing:1px">DATE RECEIVED</div>
+            <input id="po-date-received" type="date" class="search-input" style="width:100%">
+          </div>
+        </div>
+
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:8px;letter-spacing:1px">PARTS ORDERED</div>
+        <div id="po-lines" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+        <button onclick="addPOLine()" style="background:var(--bg4);border:1px solid var(--border2);color:var(--text2);padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin-bottom:12px">+ ADD PART LINE</button>
+
+        <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;gap:10px">
+          <button onclick="savePurchaseOrder()" style="background:var(--accent);color:#000;border:none;padding:9px 20px;font-family:var(--mono);font-size:11px;font-weight:500;cursor:pointer;border-radius:2px;letter-spacing:1px">SAVE ORDER</button>
+          <button onclick="clearPOForm()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px 16px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px">CLEAR</button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div id="po-stats" class="section-gap"></div>
+
+      <!-- Order History -->
+      <div class="card">
+        <div class="card-title">Order History</div>
+        <div class="toolbar" style="margin-bottom:12px">
+          <input class="search-input" type="text" id="po-search" placeholder="Search supplier, part, model..." oninput="renderPurchaseOrders()">
+          <select class="filter-select" id="po-filter-supplier" onchange="renderPurchaseOrders()"><option value="">All Suppliers</option></select>
+        </div>
+        <div id="po-history"></div>
+      </div>
+    </div>
+
     <!-- DIAGNOSTIC -->
     <div class="page" id="page-diagnostic">
       <div class="page-title">System</div>
@@ -346,7 +399,9 @@ function nav(el){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('page-'+el.dataset.page).classList.add('active');
+  const page=el.dataset.page;
+  document.getElementById('page-'+page).classList.add('active');
+  if(page==='purchases') renderPurchaseOrders();
 }
 function switchTab(el,tabId){
   el.closest('.page').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -940,8 +995,201 @@ async function diagSummary() {
   } catch(e) { diagOut('diag-summary-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
 
+// ─────────────────────────────────────────────
+// PURCHASE ORDERS — browser storage
+// ─────────────────────────────────────────────
+const PO_STORAGE_KEY = 'stuart_purchase_orders';
+
+function getPOs(){
+  try { return JSON.parse(localStorage.getItem(PO_STORAGE_KEY)||'[]'); }
+  catch(e){ return []; }
+}
+function savePOs(orders){
+  localStorage.setItem(PO_STORAGE_KEY, JSON.stringify(orders));
+}
+
+let poLineCount = 0;
+
+function addPOLine(partType='', model='', qty='', unitCost=''){
+  poLineCount++;
+  const id = 'po-line-'+poLineCount;
+  const div = document.createElement('div');
+  div.id = id;
+  div.style.cssText = 'display:grid;grid-template-columns:2fr 2fr 1fr 1fr auto;gap:8px;align-items:center';
+  const removeBtn = document.createElement('button');
+  removeBtn.textContent = '✕';
+  removeBtn.style.cssText = 'background:var(--accent2);border:none;color:#fff;padding:7px 10px;cursor:pointer;border-radius:2px;font-family:var(--mono);font-size:11px';
+  removeBtn.onclick = function(){ document.getElementById(id).remove(); };
+  div.innerHTML =
+    '<input class="search-input" placeholder="Part Type (e.g. Battery)" value="'+partType+'" style="width:100%">'+
+    '<input class="search-input" placeholder="Model (e.g. iPhone 13)" value="'+model+'" style="width:100%">'+
+    '<input class="search-input" type="number" placeholder="Qty" value="'+qty+'" style="width:100%">'+
+    '<input class="search-input" placeholder="Unit Cost R" value="'+unitCost+'" style="width:100%">'+
+    '<span></span>';
+  div.lastElementChild.replaceWith(removeBtn);
+  document.getElementById('po-lines').appendChild(div);
+}
+
+function clearPOForm(){
+  document.getElementById('po-supplier').value='';
+  document.getElementById('po-number').value='';
+  document.getElementById('po-date-ordered').value='';
+  document.getElementById('po-date-received').value='';
+  document.getElementById('po-lines').innerHTML='';
+  poLineCount=0;
+}
+
+function savePurchaseOrder(){
+  const supplier = document.getElementById('po-supplier').value.trim();
+  const poNumber = document.getElementById('po-number').value.trim();
+  const dateOrdered = document.getElementById('po-date-ordered').value;
+  const dateReceived = document.getElementById('po-date-received').value;
+
+  if(!supplier){ alert('Please enter a supplier name'); return; }
+  if(!dateOrdered){ alert('Please enter an order date'); return; }
+
+  const lines = [];
+  document.querySelectorAll('#po-lines > div').forEach(row=>{
+    const inputs = row.querySelectorAll('input');
+    const partType = inputs[0].value.trim();
+    const model    = inputs[1].value.trim();
+    const qty      = parseInt(inputs[2].value)||0;
+    const unitCost = parseFloat(inputs[3].value)||0;
+    if(partType && qty>0) lines.push({partType, model, qty, unitCost});
+  });
+
+  if(!lines.length){ alert('Please add at least one part line'); return; }
+
+  const order = {
+    id: 'PO-'+Date.now(),
+    supplier, poNumber, dateOrdered, dateReceived,
+    lines,
+    totalUnits: lines.reduce((a,l)=>a+l.qty, 0),
+    totalCost:  lines.reduce((a,l)=>a+(l.qty*l.unitCost), 0),
+    createdAt: new Date().toISOString()
+  };
+
+  const orders = getPOs();
+  orders.unshift(order);
+  savePOs(orders);
+  clearPOForm();
+  renderPurchaseOrders();
+  alert('Order saved successfully');
+}
+
+function deletePO(id){
+  if(!confirm('Delete this purchase order?')) return;
+  savePOs(getPOs().filter(o=>o.id!==id));
+  renderPurchaseOrders();
+}
+
+function renderPurchaseOrders(){
+  const orders = getPOs();
+  const search = (document.getElementById('po-search')?.value||'').toLowerCase();
+  const supplierFilter = document.getElementById('po-filter-supplier')?.value||'';
+
+  // Populate supplier filter
+  const suppliers = [...new Set(orders.map(o=>o.supplier).filter(Boolean))].sort();
+  const supEl = document.getElementById('po-filter-supplier');
+  if(supEl){
+    const cur = supEl.value;
+    supEl.innerHTML = '<option value="">All Suppliers</option>'+suppliers.map(s=>'<option'+(s===cur?' selected':'')+'>'+s+'</option>').join('');
+  }
+
+  // Stats
+  const now90d = new Date(Date.now()-90*86400000);
+  const recent = orders.filter(o=>new Date(o.dateOrdered||o.createdAt)>=now90d);
+  const totalUnits = recent.reduce((a,o)=>a+o.totalUnits,0);
+  const totalCost  = recent.reduce((a,o)=>a+o.totalCost,0);
+  const bySupplier = {};
+  recent.forEach(o=>{ bySupplier[o.supplier]=(bySupplier[o.supplier]||0)+o.totalUnits; });
+  const topSup = Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]);
+
+  const forecastTotal = dataLoaded ? allParts.filter(p=>p.used90>=MIN_SALES).reduce((a,p)=>{
+    const dr=p.used90/90, mr=dr*30;
+    const cd=mr>=10?14:mr>=5?10:7;
+    const target=Math.ceil(dr*(cd+LEAD_TIME_DAYS));
+    return a+Math.max(0,target-p.inStock);
+  },0) : 0;
+
+  const diff = totalUnits - forecastTotal;
+  let statsHtml = '<div class="stats-row five section-gap">';
+  statsHtml += '<div class="stat blue"><div class="stat-label">Total Orders</div><div class="stat-val blue">'+orders.length+'</div><div class="stat-sub">All time</div></div>';
+  statsHtml += '<div class="stat green"><div class="stat-label">Units (90d)</div><div class="stat-val green">'+totalUnits+'</div><div class="stat-sub">Parts received</div></div>';
+  statsHtml += '<div class="stat purple"><div class="stat-label">Spend (90d)</div><div class="stat-val purple">'+(totalCost>0?'R'+Math.round(totalCost).toLocaleString():'—')+'</div><div class="stat-sub">At cost</div></div>';
+  statsHtml += '<div class="stat yellow"><div class="stat-label">Forecast Need</div><div class="stat-val yellow">'+forecastTotal+'</div><div class="stat-sub">Units this week</div></div>';
+  statsHtml += '<div class="stat '+(diff>=0?'green':'red')+'"><div class="stat-label">vs Forecast</div><div class="stat-val '+(diff>=0?'green':'red')+'">'+(diff>=0?'ON TRACK':'SHORT')+'</div><div class="stat-sub">'+(diff>0?'+':'')+diff+' units</div></div>';
+  statsHtml += '</div>';
+
+  if(topSup.length){
+    statsHtml += '<div class="card section-gap"><div class="card-title">Spend by Supplier (90d)</div>';
+    topSup.forEach(function(entry){
+      statsHtml += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>'+entry[0]+'</span><span class="num" style="color:var(--accent)">'+entry[1]+' units</span></div>';
+    });
+    statsHtml += '</div>';
+  }
+
+  document.getElementById('po-stats').innerHTML = statsHtml;
+
+  // Filter
+  var filtered = orders.filter(function(o){
+    var ms = !search || o.supplier.toLowerCase().includes(search) ||
+      (o.poNumber||'').toLowerCase().includes(search) ||
+      o.lines.some(function(l){ return l.partType.toLowerCase().includes(search)||l.model.toLowerCase().includes(search); });
+    return ms && (!supplierFilter||o.supplier===supplierFilter);
+  });
+
+  if(!filtered.length){
+    document.getElementById('po-history').innerHTML = '<div class="empty"><div class="empty-title">No orders logged yet</div><div style="color:var(--text3);font-size:12px;margin-top:6px">Use the form above to log your first supplier invoice</div></div>';
+    return;
+  }
+
+  var html = '';
+  filtered.forEach(function(o){
+    var ordered  = o.dateOrdered  ? new Date(o.dateOrdered).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    var received = o.dateReceived ? new Date(o.dateReceived).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}) : 'Pending';
+    var leadDays = (o.dateOrdered&&o.dateReceived) ? Math.round((new Date(o.dateReceived)-new Date(o.dateOrdered))/86400000) : null;
+
+    html += '<div style="border:1px solid var(--border);border-radius:2px;margin-bottom:12px;overflow:hidden">';
+    html += '<div style="background:var(--bg3);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">';
+    html += '<div><div style="font-size:14px;font-weight:700;margin-bottom:2px">'+o.supplier;
+    if(o.poNumber) html += '<span style="color:var(--text3);font-size:11px;font-family:var(--mono);margin-left:10px">'+o.poNumber+'</span>';
+    html += '</div>';
+    html += '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Ordered: '+ordered+' · Received: '+received;
+    if(leadDays!==null) html += ' · '+leadDays+'d lead time';
+    html += '</div></div>';
+    html += '<div style="display:flex;align-items:center;gap:16px">';
+    html += '<div style="text-align:right"><div style="font-family:var(--mono);font-size:20px;color:var(--accent)">'+o.totalUnits+' units</div>';
+    if(o.totalCost>0) html += '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">R'+Math.round(o.totalCost).toLocaleString()+'</div>';
+    html += '</div>';
+    html += '<button data-id="'+o.id+'" onclick="deletePO(this.dataset.id)" style="background:var(--bg4);border:1px solid var(--border);color:var(--accent2);padding:6px 10px;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:2px">DELETE</button>';
+    html += '</div></div>';
+    html += '<div style="padding:10px 16px"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--border)">';
+    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">PART TYPE</th>';
+    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">MODEL</th>';
+    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">QTY</th>';
+    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">UNIT COST</th>';
+    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">LINE TOTAL</th></tr></thead><tbody>';
+    o.lines.forEach(function(l){
+      html += '<tr><td style="padding:6px 8px;font-size:13px"><strong>'+l.partType+'</strong></td>';
+      html += '<td style="padding:6px 8px;color:var(--text2);font-size:13px">'+(l.model||'—')+'</td>';
+      html += '<td style="padding:6px 8px;font-family:var(--mono);color:var(--accent3)">'+l.qty+'</td>';
+      html += '<td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--text3)">'+(l.unitCost>0?'R'+l.unitCost.toFixed(2):'—')+'</td>';
+      html += '<td style="padding:6px 8px;font-family:var(--mono);color:#a855f7">'+(l.unitCost>0?'R'+Math.round(l.qty*l.unitCost).toLocaleString():'—')+'</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+  });
+  document.getElementById('po-history').innerHTML = html;
+}
+
 // Auto-sync every 30 minutes (not on page load — click Sync to start)
 window.addEventListener('load', () => {
+  // Set today as default order date
+  const today = new Date().toISOString().split('T')[0];
+  const doi = document.getElementById('po-date-ordered');
+  if(doi) doi.value = today;
+  // Add first empty part line
+  addPOLine();
   setInterval(() => {
     if(!document.getElementById('load-btn').disabled){
       loadAll();
