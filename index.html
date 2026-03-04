@@ -408,7 +408,8 @@ async function loadAll(){
 
     // ── Build SM Orders usage map ──
     // Key: "partType|||model" → {sm90, smMonth, smLastMonth}
-    const smUsage={};
+    window.smUsage={};
+    const smUsage=window.smUsage;
     let smSkipped=0, smCounted=0;
 
     for(const r of smOrderRecords){
