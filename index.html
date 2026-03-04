@@ -1145,7 +1145,7 @@ Rules:
 - If you cannot determine a field, use an empty string or 0
 - Include ALL line items from the invoice`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
