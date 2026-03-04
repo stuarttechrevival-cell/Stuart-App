@@ -902,9 +902,8 @@ async function diagSummary() {
   } catch(e) { diagOut('diag-summary-out', 'Exception: ' + e.message, 'var(--accent2)'); }
 }
 
-// Auto-sync on page load and every 30 minutes
+// Auto-sync every 30 minutes (not on page load — click Sync to start)
 window.addEventListener('load', () => {
-  loadAll();
   setInterval(() => {
     if(!document.getElementById('load-btn').disabled){
       loadAll();
