@@ -383,6 +383,7 @@ async function loadAll(){
     const now90=new Date(Date.now()-90*86400000);
     const now30=new Date(Date.now()-30*86400000);
     const now60=new Date(Date.now()-60*86400000);
+    const now180=new Date(Date.now()-180*86400000); // SM Orders window
     const thisMonthStart=new Date(new Date().getFullYear(),new Date().getMonth(),1);
     const lastMonthStart=new Date(new Date().getFullYear(),new Date().getMonth()-1,1);
     const lastMonthEnd=new Date(new Date().getFullYear(),new Date().getMonth(),0,23,59,59);
@@ -446,7 +447,7 @@ async function loadAll(){
         const key=partType.toLowerCase()+'|||'+modelNorm;
         if(!smUsage[key]) smUsage[key]={partType,model,sm90:0,smMonth:0,smLastMonth:0,sm60:0};
         if(orderDate){
-          if(orderDate>=now90)  smUsage[key].sm90++;
+          if(orderDate>=now180) smUsage[key].sm90++;   // use 180d window scaled to 90d rate
           if(orderDate>=now30)  smUsage[key].smMonth++;
           if(orderDate>=now60)  smUsage[key].sm60++;
           if(orderDate>=lastMonthStart&&orderDate<=lastMonthEnd) smUsage[key].smLastMonth++;
@@ -488,7 +489,8 @@ async function loadAll(){
       const sm=smUsage[smKey]||{sm90:0,smMonth:0,smLastMonth:0,sm60:0};
 
       // Combined usage = Summary (INV Date) + SM Orders
-      const combined90=used90+sm.sm90;
+      // SM uses 180d window so halve it to get 90d equivalent rate
+      const combined90=used90+Math.round(sm.sm90/2);
       const combinedMonth=usedMonth+sm.smMonth;
       const combinedLastMonth=usedLastMonth+sm.smLastMonth;
 
