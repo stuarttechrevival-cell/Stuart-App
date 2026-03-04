@@ -454,8 +454,17 @@ async function loadAll(){
       }
     }
     console.log('SM Orders: '+smCounted+' part-records processed, '+smSkipped+' skipped');
+    // Debug: show first 5 SM keys
+    const smKeys=Object.keys(smUsage).slice(0,5);
+    console.log('SM usage keys sample:', smKeys);
 
     // ── Build allParts from Summary, enriched with SM Orders ──
+    // Debug: log first 3 summary normalised keys
+    summaryRecords.slice(0,3).forEach(r=>{
+      const pt=(Array.isArray(r.fields['Part Type'])?r.fields['Part Type'][0]:r.fields['Part Type']||'').toString().trim().toLowerCase();
+      const mo=(Array.isArray(r.fields['Device Model'])?r.fields['Device Model'][0]:r.fields['Device Model']||'').toString().trim().toLowerCase().replace(/^apple\s+/,'').replace(/^samsung\s+/,'');
+      console.log('Summary key sample: "'+pt+'|||'+mo+'"');
+    });
     allParts=summaryRecords.map(r=>{
       const f=r.fields;
       const rawBrand=f['Brand']; const brand=(Array.isArray(rawBrand)?rawBrand[0]:rawBrand||'').toString().trim();
