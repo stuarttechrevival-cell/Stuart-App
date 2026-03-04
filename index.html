@@ -294,8 +294,11 @@ tbody tr:hover td{background:var(--bg3);}
     <!-- PURCHASE ORDERS -->
     <div class="page" id="page-purchases">
       <div class="page-title">Procurement</div>
-      <div class="page-heading">Purchase Orders</div>
-      <div class="page-sub">Log supplier invoices to track actual ordering patterns and improve forecast accuracy</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div class="page-heading">Purchase Orders</div>
+        <button onclick="refreshBills()" id="bills-refresh-btn" style="background:var(--bg3);border:1px solid var(--accent);color:var(--accent);padding:7px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:1px;margin-top:4px">↻ REFRESH BILLS</button>
+      </div>
+      <div class="page-sub">Manual entries + live Airtable bills (last 180 days, Stock (Parts) only)</div>
 
       <!-- Add Order Form -->
       <div class="card section-gap" id="po-form-card">
@@ -395,6 +398,10 @@ let allParts=[];
 let dataLoaded=false;
 const SM_ORDERS_BASE='appOy3OUsoQ09CYtj';
 const SM_ORDERS_TABLE='HASP Stock ordering ROI';
+const BILLS_TABLE='Bills';
+let billsCache=[];
+let billsLoaded=false;
+let billsLoading=false;
 const now=new Date();
 const thisMonthStart=new Date(now.getFullYear(),now.getMonth(),1);
 const lastMonthStart=new Date(now.getFullYear(),now.getMonth()-1,1);
@@ -1195,8 +1202,138 @@ Rules:
   btn.textContent = '📄 SCAN INVOICE PDF';
 }
 
+// ─────────────────────────────────────────────
+// BILLS — fetch from Airtable and parse
+// ─────────────────────────────────────────────
+
+function parseLineItemsCopy(text) {
+  // Returns array of {partType, model, qty, unitCost}
+  if (!text) return [];
+  const cutoff180 = new Date(Date.now() - 180 * 86400000);
+  // Split by comma, trim, filter empties
+  const raw = text.split(',').map(s => s.trim()).filter(s => s.length > 2);
+
+  // Group identical entries to get qty
+  const counts = {};
+  raw.forEach(entry => {
+    // Normalise whitespace
+    const key = entry.replace(/\s+/g, ' ').trim();
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  return Object.entries(counts).map(([name, qty]) => {
+    // Try to extract part type from the end: "iPhone 11 LCD Black" → partType="LCD", model="iPhone 11"
+    // Common suffixes: Battery, LCD, Casing, Back Glass / Rear Glass, Charging Dock, Camera, etc.
+    const partTypePatterns = [
+      /\bBattery\b/i,
+      /\bLCD\b/i,
+      /\bCasing\b/i,
+      /\bBack\s+Glass\s*\/?\s*Rear\s+Glass\b/i,
+      /\bCharging\s+Dock\b/i,
+      /\bRear\s+Camera\b/i,
+      /\bFront\s+Camera\b/i,
+      /\bDigitizer\b/i,
+      /\bS[- ]?Pen\b/i,
+      /\bSSD\b/i,
+      /\bHDMI\b/i,
+      /\bIC\b/i,
+      /\bPMIC\b/i,
+      /\bProximity\b/i,
+      /\bTrackpad\b/i,
+      /\bLoudspeaker\b/i,
+      /\bPower\s+Flex\b/i,
+      /\bPower\s+Supply\s+Unit\b/i,
+      /\bPSU\b/i,
+      /\bNAND\b/i,
+    ];
+
+    let partType = 'Part';
+    let model = name;
+
+    for (const pat of partTypePatterns) {
+      const m = name.match(pat);
+      if (m) {
+        partType = m[0].trim();
+        // Model is everything before the match, trimmed of colour/trailing words
+        model = name.substring(0, name.search(pat)).trim();
+        // Strip trailing colour words (Black, White, Gold, etc.)
+        model = model.replace(/\s+(Black|White|Gold|Silver|Blue|Red|Purple|Gray|Rose\s+Gold|Space\s+Gray|Green|Orange|Pink|Yellow)\s*$/i, '').trim();
+        break;
+      }
+    }
+
+    return { partType, model: model || name, qty, unitCost: 0 };
+  });
+}
+
+async function refreshBills() {
+  const btn = document.getElementById('bills-refresh-btn');
+  if(btn){ btn.disabled=true; btn.textContent='↻ LOADING…'; }
+  billsLoaded = false;
+  billsLoading = false;
+  billsCache = [];
+  await fetchBills();
+  renderPurchaseOrders();
+  if(btn){ btn.disabled=false; btn.textContent='↻ REFRESH BILLS'; }
+}
+
+async function fetchBills() {
+  if (billsLoading) return;
+  billsLoading = true;
+  try {
+    const cutoff = new Date(Date.now() - 180 * 86400000).toISOString().split('T')[0];
+    const filter = encodeURIComponent(`AND({Cost Type}="Stock (Parts)",IS_AFTER({Date},"${cutoff}"))`);
+    const fields = ['Contact','Date','Bill Total','Line items copy','Status'].map(f=>'fields[]='+encodeURIComponent(f)).join('&');
+    const records = await fetchAllPages(
+      BILLS_TABLE,
+      `&filterByFormula=${filter}&${fields}&sort[0][field]=Date&sort[0][direction]=desc`
+    );
+
+    billsCache = records.map(r => {
+      const f = r.fields;
+      const lines = parseLineItemsCopy(f['Line items copy'] || '');
+      const totalUnits = lines.reduce((a, l) => a + l.qty, 0);
+      return {
+        id: 'AT-' + r.id,
+        supplier: f['Contact'] || 'Unknown',
+        poNumber: '',
+        dateOrdered: f['Date'] || '',
+        dateReceived: f['Date'] || '', // Bills are already received
+        lines,
+        totalUnits,
+        totalCost: f['Bill Total'] || 0,
+        source: 'airtable',
+        createdAt: f['Date'] || new Date().toISOString()
+      };
+    });
+    billsLoaded = true;
+  } catch(e) {
+    console.error('Bills fetch error:', e);
+  }
+  billsLoading = false;
+}
+
+// ─────────────────────────────────────────────
+// COMBINED ORDERS = manual POs + Airtable bills
+// ─────────────────────────────────────────────
+
+function getAllOrders() {
+  const manual = getPOs();
+  return [...manual, ...billsCache].sort((a, b) =>
+    new Date(b.dateOrdered || b.createdAt) - new Date(a.dateOrdered || a.createdAt)
+  );
+}
+
 function renderPurchaseOrders(){
-  const orders = getPOs();
+  // Trigger bills load if not done yet
+  if (!billsLoaded && !billsLoading) {
+    fetchBills().then(() => renderPurchaseOrders());
+    document.getElementById('po-history').innerHTML =
+      '<div class="empty"><div class="empty-title">Loading Airtable bills…</div></div>';
+    return;
+  }
+
+  const orders = getAllOrders();
   const search = (document.getElementById('po-search')?.value||'').toLowerCase();
   const supplierFilter = document.getElementById('po-filter-supplier')?.value||'';
 
@@ -1208,13 +1345,15 @@ function renderPurchaseOrders(){
     supEl.innerHTML = '<option value="">All Suppliers</option>'+suppliers.map(s=>'<option'+(s===cur?' selected':'')+'>'+s+'</option>').join('');
   }
 
-  // Stats
+  // Stats — 90d window
   const now90d = new Date(Date.now()-90*86400000);
   const recent = orders.filter(o=>new Date(o.dateOrdered||o.createdAt)>=now90d);
+  const manualCount = getPOs().length;
+  const airtableCount = billsCache.length;
   const totalUnits = recent.reduce((a,o)=>a+o.totalUnits,0);
   const totalCost  = recent.reduce((a,o)=>a+o.totalCost,0);
   const bySupplier = {};
-  recent.forEach(o=>{ bySupplier[o.supplier]=(bySupplier[o.supplier]||0)+o.totalUnits; });
+  recent.forEach(o=>{ bySupplier[o.supplier]=(bySupplier[o.supplier]||0)+o.totalCost; });
   const topSup = Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]);
 
   const forecastTotal = dataLoaded ? allParts.filter(p=>p.used90>=MIN_SALES).reduce((a,p)=>{
@@ -1226,8 +1365,8 @@ function renderPurchaseOrders(){
 
   const diff = totalUnits - forecastTotal;
   let statsHtml = '<div class="stats-row five section-gap">';
-  statsHtml += '<div class="stat blue"><div class="stat-label">Total Orders</div><div class="stat-val blue">'+orders.length+'</div><div class="stat-sub">All time</div></div>';
-  statsHtml += '<div class="stat green"><div class="stat-label">Units (90d)</div><div class="stat-val green">'+totalUnits+'</div><div class="stat-sub">Parts received</div></div>';
+  statsHtml += '<div class="stat blue"><div class="stat-label">Total Orders</div><div class="stat-val blue">'+orders.length+'</div><div class="stat-sub">'+manualCount+' manual · '+airtableCount+' from Airtable</div></div>';
+  statsHtml += '<div class="stat green"><div class="stat-label">Units (90d)</div><div class="stat-val green">'+totalUnits+'</div><div class="stat-sub">Parts ordered</div></div>';
   statsHtml += '<div class="stat purple"><div class="stat-label">Spend (90d)</div><div class="stat-val purple">'+(totalCost>0?'R'+Math.round(totalCost).toLocaleString():'—')+'</div><div class="stat-sub">At cost</div></div>';
   statsHtml += '<div class="stat yellow"><div class="stat-label">Forecast Need</div><div class="stat-val yellow">'+forecastTotal+'</div><div class="stat-sub">Units this week</div></div>';
   statsHtml += '<div class="stat '+(diff>=0?'green':'red')+'"><div class="stat-label">vs Forecast</div><div class="stat-val '+(diff>=0?'green':'red')+'">'+(diff>=0?'ON TRACK':'SHORT')+'</div><div class="stat-sub">'+(diff>0?'+':'')+diff+' units</div></div>';
@@ -1235,8 +1374,8 @@ function renderPurchaseOrders(){
 
   if(topSup.length){
     statsHtml += '<div class="card section-gap"><div class="card-title">Spend by Supplier (90d)</div>';
-    topSup.forEach(function(entry){
-      statsHtml += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>'+entry[0]+'</span><span class="num" style="color:var(--accent)">'+entry[1]+' units</span></div>';
+    topSup.slice(0,10).forEach(function(entry){
+      statsHtml += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>'+entry[0]+'</span><span class="num" style="color:var(--accent)">R'+Math.round(entry[1]).toLocaleString()+'</span></div>';
     });
     statsHtml += '</div>';
   }
@@ -1247,12 +1386,12 @@ function renderPurchaseOrders(){
   var filtered = orders.filter(function(o){
     var ms = !search || o.supplier.toLowerCase().includes(search) ||
       (o.poNumber||'').toLowerCase().includes(search) ||
-      o.lines.some(function(l){ return l.partType.toLowerCase().includes(search)||l.model.toLowerCase().includes(search); });
+      (o.lines||[]).some(function(l){ return (l.partType||'').toLowerCase().includes(search)||(l.model||'').toLowerCase().includes(search); });
     return ms && (!supplierFilter||o.supplier===supplierFilter);
   });
 
   if(!filtered.length){
-    document.getElementById('po-history').innerHTML = '<div class="empty"><div class="empty-title">No orders logged yet</div><div style="color:var(--text3);font-size:12px;margin-top:6px">Use the form above to log your first supplier invoice</div></div>';
+    document.getElementById('po-history').innerHTML = '<div class="empty"><div class="empty-title">No orders found</div><div style="color:var(--text3);font-size:12px;margin-top:6px">Use the form above to log a supplier invoice, or adjust your search filters</div></div>';
     return;
   }
 
@@ -1260,36 +1399,56 @@ function renderPurchaseOrders(){
   filtered.forEach(function(o){
     var ordered  = o.dateOrdered  ? new Date(o.dateOrdered).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}) : '—';
     var received = o.dateReceived ? new Date(o.dateReceived).toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'}) : 'Pending';
-    var leadDays = (o.dateOrdered&&o.dateReceived) ? Math.round((new Date(o.dateReceived)-new Date(o.dateOrdered))/86400000) : null;
+    var leadDays = (o.dateOrdered&&o.dateReceived&&o.dateOrdered!==o.dateReceived) ? Math.round((new Date(o.dateReceived)-new Date(o.dateOrdered))/86400000) : null;
+    var isAT = o.source === 'airtable';
 
     html += '<div style="border:1px solid var(--border);border-radius:2px;margin-bottom:12px;overflow:hidden">';
     html += '<div style="background:var(--bg3);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">';
     html += '<div><div style="font-size:14px;font-weight:700;margin-bottom:2px">'+o.supplier;
+    if(isAT){
+      html += '<span style="margin-left:8px;padding:1px 6px;border-radius:2px;font-family:var(--mono);font-size:9px;letter-spacing:1px;background:rgba(0,212,255,0.12);color:var(--accent);border:1px solid rgba(0,212,255,0.25)">AIRTABLE</span>';
+    } else {
+      html += '<span style="margin-left:8px;padding:1px 6px;border-radius:2px;font-family:var(--mono);font-size:9px;letter-spacing:1px;background:rgba(46,213,115,0.12);color:var(--accent3);border:1px solid rgba(46,213,115,0.25)">MANUAL</span>';
+    }
     if(o.poNumber) html += '<span style="color:var(--text3);font-size:11px;font-family:var(--mono);margin-left:10px">'+o.poNumber+'</span>';
     html += '</div>';
-    html += '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Ordered: '+ordered+' · Received: '+received;
+    html += '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Date: '+ordered;
     if(leadDays!==null) html += ' · '+leadDays+'d lead time';
     html += '</div></div>';
     html += '<div style="display:flex;align-items:center;gap:16px">';
-    html += '<div style="text-align:right"><div style="font-family:var(--mono);font-size:20px;color:var(--accent)">'+o.totalUnits+' units</div>';
+    html += '<div style="text-align:right"><div style="font-family:var(--mono);font-size:20px;color:var(--accent)">'+(o.totalUnits||'?')+' units</div>';
     if(o.totalCost>0) html += '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">R'+Math.round(o.totalCost).toLocaleString()+'</div>';
     html += '</div>';
-    html += '<button data-id="'+o.id+'" onclick="deletePO(this.dataset.id)" style="background:var(--bg4);border:1px solid var(--border);color:var(--accent2);padding:6px 10px;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:2px">DELETE</button>';
+    if(!isAT){
+      html += '<button data-id="'+o.id+'" onclick="deletePO(this.dataset.id)" style="background:var(--bg4);border:1px solid var(--border);color:var(--accent2);padding:6px 10px;font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:2px">DELETE</button>';
+    }
     html += '</div></div>';
-    html += '<div style="padding:10px 16px"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--border)">';
-    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">PART TYPE</th>';
-    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">MODEL</th>';
-    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">QTY</th>';
-    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">UNIT COST</th>';
-    html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">LINE TOTAL</th></tr></thead><tbody>';
-    o.lines.forEach(function(l){
-      html += '<tr><td style="padding:6px 8px;font-size:13px"><strong>'+l.partType+'</strong></td>';
-      html += '<td style="padding:6px 8px;color:var(--text2);font-size:13px">'+(l.model||'—')+'</td>';
-      html += '<td style="padding:6px 8px;font-family:var(--mono);color:var(--accent3)">'+l.qty+'</td>';
-      html += '<td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--text3)">'+(l.unitCost>0?'R'+l.unitCost.toFixed(2):'—')+'</td>';
-      html += '<td style="padding:6px 8px;font-family:var(--mono);color:#a855f7">'+(l.unitCost>0?'R'+Math.round(l.qty*l.unitCost).toLocaleString():'—')+'</td></tr>';
-    });
-    html += '</tbody></table></div></div>';
+
+    if(o.lines && o.lines.length) {
+      html += '<div style="padding:10px 16px"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--border)">';
+      html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">PART TYPE</th>';
+      html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">MODEL</th>';
+      html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">QTY</th>';
+      if(!isAT){
+        html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">UNIT COST</th>';
+        html += '<th style="text-align:left;padding:6px 8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent)">LINE TOTAL</th>';
+      }
+      html += '</tr></thead><tbody>';
+      o.lines.forEach(function(l){
+        html += '<tr><td style="padding:6px 8px;font-size:13px"><strong>'+(l.partType||'Part')+'</strong></td>';
+        html += '<td style="padding:6px 8px;color:var(--text2);font-size:13px">'+(l.model||'—')+'</td>';
+        html += '<td style="padding:6px 8px;font-family:var(--mono);color:var(--accent3)">'+l.qty+'</td>';
+        if(!isAT){
+          html += '<td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--text3)">'+(l.unitCost>0?'R'+l.unitCost.toFixed(2):'—')+'</td>';
+          html += '<td style="padding:6px 8px;font-family:var(--mono);color:#a855f7">'+(l.unitCost>0?'R'+Math.round(l.qty*l.unitCost).toLocaleString():'—')+'</td>';
+        }
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div style="padding:10px 16px;font-family:var(--mono);font-size:11px;color:var(--text3)">No line item detail available for this bill</div>';
+    }
+    html += '</div>';
   });
   document.getElementById('po-history').innerHTML = html;
 }
