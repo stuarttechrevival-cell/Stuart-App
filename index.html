@@ -425,15 +425,24 @@ async function loadAll(){
       const partsStr=(Array.isArray(rawParts)?rawParts[0]:rawParts).toString().trim();
       if(!partsStr) { smSkipped++; continue; }
 
-      // Parse date — use Date Received (Part) 
+      // Parse date — use Date Received (Part)
       const rawDate=f['Date Received (Part)']||'';
       const dateStr=(Array.isArray(rawDate)?rawDate[0]:rawDate).toString().trim();
       const orderDate=dateStr?new Date(dateStr):null;
 
+      // Normalise model — strip brand prefixes so "iPhone 11" matches "Apple iPhone 11"
+      function normModel(m){
+        return m.toLowerCase()
+          .replace(/^apple\s+/,'').replace(/^samsung\s+/,'')
+          .replace(/^huawei\s+/,'').replace(/^xiaomi\s+/,'')
+          .replace(/^oppo\s+/,'').replace(/^realme\s+/,'').trim();
+      }
+      const modelNorm=normModel(model);
+
       // Split comma-separated parts
       const parts=partsStr.split(',').map(p=>p.trim()).filter(p=>p.length>1);
       for(const partType of parts){
-        const key=partType.toLowerCase()+'|||'+model.toLowerCase();
+        const key=partType.toLowerCase()+'|||'+modelNorm;
         if(!smUsage[key]) smUsage[key]={partType,model,sm90:0,smMonth:0,smLastMonth:0,sm60:0};
         if(orderDate){
           if(orderDate>=now90)  smUsage[key].sm90++;
@@ -460,8 +469,12 @@ async function loadAll(){
       const rawSup=f['Suppliers'];
       const supplier=(Array.isArray(rawSup)?rawSup[0]:rawSup||'').toString().trim();
 
-      // Look up SM Orders usage for this part+model
-      const smKey=partType.toLowerCase()+'|||'+model.toLowerCase();
+      // Look up SM Orders usage — normalise model name to strip brand prefix
+      const modelNorm2=model.toLowerCase()
+        .replace(/^apple\s+/,'').replace(/^samsung\s+/,'')
+        .replace(/^huawei\s+/,'').replace(/^xiaomi\s+/,'')
+        .replace(/^oppo\s+/,'').replace(/^realme\s+/,'').trim();
+      const smKey=partType.toLowerCase()+'|||'+modelNorm2;
       const sm=smUsage[smKey]||{sm90:0,smMonth:0,smLastMonth:0,sm60:0};
 
       // Combined usage = Summary (INV Date) + SM Orders
