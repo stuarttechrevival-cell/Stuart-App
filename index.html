@@ -166,7 +166,18 @@ tbody tr:hover td{background:var(--bg3);}
     <div class="page" id="page-forecast">
       <div class="page-title">SA Demand Forecast</div>
       <div class="page-heading">Weekly Order Recommendation</div>
-      <div class="page-sub">Weighted model: 70% last 30d · 20% same period last year · 10% 90-day avg · Min 2 sales threshold</div>
+      <div class="page-sub">Usage rate (INV Date) · Bills order history (12 months) · Dynamic cover days · 3-day SA lead time</div>
+
+      <!-- Smart Recommendation Panel -->
+      <div id="smart-rec-panel" style="margin-bottom:8px">
+        <div style="padding:18px;color:var(--text3);font-family:var(--mono);font-size:12px">Sync data first to generate recommendations</div>
+      </div>
+
+      <!-- Divider -->
+      <div style="border-top:1px solid var(--border);margin:8px 0 20px;position:relative">
+        <span style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg);padding:0 12px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase">Detailed Forecast by Brand</span>
+      </div>
+
       <div class="toolbar">
         <select class="filter-select" id="fc-range" onchange="renderForecast()">
           <option value="84" selected>Rolling 12 weeks (84 days)</option>
@@ -402,6 +413,9 @@ const BILLS_TABLE='Bills';
 let billsCache=[];
 let billsLoaded=false;
 let billsLoading=false;
+let billsForecastCache=[];
+let billsForecastLoaded=false;
+let billsForecastLoading=false;
 const now=new Date();
 const thisMonthStart=new Date(now.getFullYear(),now.getMonth(),1);
 const lastMonthStart=new Date(now.getFullYear(),now.getMonth()-1,1);
@@ -416,6 +430,7 @@ function nav(el){
   const page=el.dataset.page;
   document.getElementById('page-'+page).classList.add('active');
   if(page==='purchases') renderPurchaseOrders();
+  if(page==='forecast') renderSmartRecommendation();
 }
 function switchTab(el,tabId){
   el.closest('.page').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -632,6 +647,7 @@ function setSyncStatus(state,msg){
 
 function renderAll(){
   renderDashboard();renderForecast();renderReorder();renderRunout();
+  renderSmartRecommendation();
   renderTopMovers();renderTrends();renderSupplier();renderCost();
   renderCatalogue();renderDeadStock();updateBadges();
 }
@@ -688,6 +704,261 @@ function renderDashboard(){
   document.getElementById('brand-breakdown').innerHTML=bE.map(([b,c])=>'<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>'+b+'</span><span class="num" style="font-size:11px;color:var(--text3)">'+c+' sold</span></div><div class="progress"><div class="progress-fill" style="width:'+Math.round(c/maxB*100)+'%;background:var(--accent)"></div></div></div>').join('');
   const tE=Object.entries(types).sort((a,b)=>b[1]-a[1]).slice(0,8),maxT=tE[0]?.[1]||1;
   document.getElementById('type-breakdown').innerHTML=tE.map(([t,c])=>'<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>'+t+'</span><span class="num" style="font-size:11px;color:var(--text3)">'+c+' sold</span></div><div class="progress"><div class="progress-fill" style="width:'+Math.round(c/maxT*100)+'%;background:var(--accent4)"></div></div></div>').join('');
+}
+
+// ─────────────────────────────────────────────
+// BILLS FOR FORECAST — 1 year window
+// Builds per-part order history: typical qty, reorder interval
+// ─────────────────────────────────────────────
+
+async function fetchBillsForForecast(){
+  if(billsForecastLoading) return;
+  billsForecastLoading=true;
+  try {
+    const cutoff=new Date(Date.now()-365*86400000).toISOString().split('T')[0];
+    const filter=encodeURIComponent(`AND({Cost Type}="Stock (Parts)",IS_AFTER({Date},"${cutoff}"))`);
+    const fields=['Contact','Date','Bill Total','Line items copy'].map(f=>'fields[]='+encodeURIComponent(f)).join('&');
+    const records=await fetchAllPages(
+      BILLS_TABLE,
+      `&filterByFormula=${filter}&${fields}&sort[0][field]=Date&sort[0][direction]=desc`
+    );
+    billsForecastCache=records.map(r=>{
+      const f=r.fields;
+      return {
+        date: f['Date']||'',
+        supplier: f['Contact']||'Unknown',
+        totalCost: f['Bill Total']||0,
+        lineText: f['Line items copy']||''
+      };
+    });
+    billsForecastLoaded=true;
+  } catch(e){ console.error('Bills forecast fetch error:',e); }
+  billsForecastLoading=false;
+}
+
+// Normalise a part name for fuzzy matching against allParts keys
+function normKey(s){
+  return s.toLowerCase()
+    .replace(/\biphone\b/g,'iphone').replace(/\bipad\b/g,'ipad')
+    .replace(/[^a-z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+}
+
+// Build a lookup: normKey(model+partType) → {orders:[{date,qty,supplier}], totalQty, avgQty, avgIntervalDays}
+function buildBillsOrderHistory(){
+  const hist={};
+  billsForecastCache.forEach(bill=>{
+    if(!bill.lineText) return;
+    const raw=bill.lineText.split(',').map(s=>s.trim()).filter(s=>s.length>2);
+    const counts={};
+    raw.forEach(entry=>{ const k=entry.replace(/\s+/g,' ').trim(); counts[k]=(counts[k]||0)+1; });
+    Object.entries(counts).forEach(([name,qty])=>{
+      const key=normKey(name);
+      if(!hist[key]) hist[key]={orders:[],totalQty:0};
+      hist[key].orders.push({date:bill.date, qty, supplier:bill.supplier});
+      hist[key].totalQty+=qty;
+    });
+  });
+  // Calculate avg qty per order and avg interval between orders
+  Object.values(hist).forEach(h=>{
+    h.avgQty=h.totalQty/h.orders.length;
+    if(h.orders.length>1){
+      const sorted=h.orders.map(o=>new Date(o.date)).sort((a,b)=>a-b);
+      const intervals=[];
+      for(let i=1;i<sorted.length;i++) intervals.push((sorted[i]-sorted[i-1])/86400000);
+      h.avgIntervalDays=intervals.reduce((a,b)=>a+b,0)/intervals.length;
+    } else {
+      h.avgIntervalDays=null; // only one order, can't calc interval
+    }
+  });
+  return hist;
+}
+
+// For a given part, find the best matching Bills history entry
+function findBillsMatch(part, hist){
+  // Try progressively looser keys: "model partType" → "model" → "partType"
+  const candidates=[
+    normKey((part.model||'')+' '+(part.partType||'')),
+    normKey(part.model||''),
+    normKey(part.partType||'')
+  ];
+  for(const key of candidates){
+    if(hist[key]) return hist[key];
+    // Partial match: find any hist key that contains this key
+    const match=Object.keys(hist).find(k=>k.includes(key)||key.includes(k));
+    if(match) return hist[match];
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// SMART ORDER RECOMMENDATION PANEL
+// Blends: usage rate (INV Date) + Bills order patterns
+// ─────────────────────────────────────────────
+
+function renderSmartRecommendation(){
+  const el=document.getElementById('smart-rec-panel');
+  if(!el) return;
+
+  if(!dataLoaded){
+    el.innerHTML='<div style="padding:18px;color:var(--text3);font-family:var(--mono);font-size:12px">Sync data first to generate recommendations</div>';
+    return;
+  }
+  if(!billsForecastLoaded){
+    el.innerHTML='<div style="padding:18px;color:var(--text3);font-family:var(--mono);font-size:12px">⏳ Loading Bills history from Airtable…</div>';
+    fetchBillsForForecast().then(()=>renderSmartRecommendation());
+    return;
+  }
+
+  const hist=buildBillsOrderHistory();
+  const horizon=parseInt(document.getElementById('smart-horizon')?.value||7);
+
+  // Build recommendations per part
+  const eligible=allParts.filter(p=>p.used90>=MIN_SALES);
+  const recs=eligible.map(p=>{
+    const dailyRate=p.used90/90;
+    const demandForHorizon=dailyRate*horizon;
+    const buffer=dailyRate*LEAD_TIME_DAYS;
+    const rawNeed=demandForHorizon+buffer-p.inStock;
+
+    // Bills enrichment
+    const billsMatch=findBillsMatch(p,hist);
+    let suggestedQty=Math.ceil(Math.max(rawNeed,0));
+    let billsSignal='';
+    let confidence='usage-only';
+
+    if(billsMatch){
+      const avgOrderQty=billsMatch.avgQty;
+      // Round up to nearest typical order qty if it makes sense
+      if(suggestedQty>0 && avgOrderQty>0){
+        const roundedUp=Math.ceil(suggestedQty/avgOrderQty)*avgOrderQty;
+        // Only round up if it's within 3x (avoid absurd quantities)
+        if(roundedUp<=suggestedQty*3) suggestedQty=roundedUp;
+      } else if(suggestedQty===0 && billsMatch.avgIntervalDays!==null){
+        // Stock is fine but check if a reorder is due based on interval
+        const lastOrder=billsMatch.orders.sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+        const daysSinceLast=(Date.now()-new Date(lastOrder.date))/86400000;
+        if(daysSinceLast>billsMatch.avgIntervalDays*0.85){
+          suggestedQty=Math.ceil(billsMatch.avgQty);
+          billsSignal='Due for reorder (last ordered '+Math.round(daysSinceLast)+'d ago, avg interval '+Math.round(billsMatch.avgIntervalDays)+'d)';
+          confidence='interval-trigger';
+        }
+      }
+      if(suggestedQty>0 && !billsSignal){
+        billsSignal='Typical order: '+Math.round(avgOrderQty)+' units'+(billsMatch.avgIntervalDays?', every ~'+Math.round(billsMatch.avgIntervalDays)+'d':'');
+        confidence='bills-enriched';
+      }
+    }
+
+    if(suggestedQty<=0) return null;
+
+    const daysLeft=dailyRate>0?Math.floor(p.inStock/dailyRate):999;
+    const urgency=daysLeft<=3?'critical':daysLeft<=7?'urgent':daysLeft<=(horizon)?'soon':'ok';
+    const monthlyRate=dailyRate*30;
+    const velocity=monthlyRate>=10?'FAST':monthlyRate>=5?'MED':'SLOW';
+
+    return {
+      ...p, dailyRate, monthlyRate, velocity,
+      suggestedQty, daysLeft, urgency,
+      billsSignal, confidence,
+      topSupplier: billsMatch?.orders?.[0]?.supplier||null
+    };
+  }).filter(Boolean).sort((a,b)=>{
+    const urgencyOrder={critical:0,urgent:1,soon:2,ok:3};
+    return (urgencyOrder[a.urgency]-urgencyOrder[b.urgency])||b.monthlyRate-a.monthlyRate;
+  });
+
+  if(!recs.length){
+    el.innerHTML='<div style="padding:18px 20px;color:var(--accent3);font-family:var(--mono);font-size:12px">✓ All parts adequately stocked for the selected horizon</div>';
+    return;
+  }
+
+  // Summary stats
+  const totalUnits=recs.reduce((a,r)=>a+r.suggestedQty,0);
+  const critical=recs.filter(r=>r.urgency==='critical').length;
+  const urgent=recs.filter(r=>r.urgency==='urgent').length;
+  const billsEnriched=recs.filter(r=>r.confidence!=='usage-only').length;
+  const bySupplier={};
+  recs.forEach(r=>{ if(r.topSupplier){ bySupplier[r.topSupplier]=(bySupplier[r.topSupplier]||0)+r.suggestedQty; }});
+  const topSuppliers=Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  const horizonLabel=horizon===7?'1 Week':horizon===14?'2 Weeks':'1 Month';
+  const weekOf=now.toLocaleDateString('en-ZA',{day:'numeric',month:'long',year:'numeric'});
+
+  let html=`
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:2px;overflow:hidden;margin-bottom:24px">
+
+    <!-- Header bar -->
+    <div style="background:linear-gradient(135deg,rgba(0,212,255,0.08),rgba(168,85,247,0.06));border-bottom:1px solid var(--border2);padding:18px 20px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px">Smart Order Recommendation · ${weekOf}</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:4px">Order <span style="color:var(--accent)">${totalUnits} units</span> across <span style="color:var(--text)">${recs.length} parts</span></div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">
+          Coverage horizon: <strong style="color:var(--text)">${horizonLabel}</strong> · 
+          ${critical>0?`<span style="color:var(--accent2)">${critical} critical</span> · `:''}
+          ${urgent>0?`<span style="color:var(--accent4)">${urgent} urgent</span> · `:''}
+          <span style="color:var(--accent3)">${billsEnriched} enriched from Bills history</span> · 
+          Usage + Bills model (1yr)
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="smart-horizon" class="filter-select" onchange="renderSmartRecommendation()" style="font-size:11px;padding:6px 10px">
+          <option value="7" ${horizon===7?'selected':''}>1 Week</option>
+          <option value="14" ${horizon===14?'selected':''}>2 Weeks</option>
+          <option value="30" ${horizon===30?'selected':''}>1 Month</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Supplier breakdown -->
+    ${topSuppliers.length?`
+    <div style="border-bottom:1px solid var(--border);padding:12px 20px;display:flex;gap:20px;flex-wrap:wrap;background:var(--bg3)">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-right:4px;display:flex;align-items:center">From Bills:</div>
+      ${topSuppliers.map(([s,u])=>`<div style="font-family:var(--mono);font-size:11px"><span style="color:var(--text2)">${s}</span> <span style="color:var(--accent)">· ${u}u</span></div>`).join('')}
+    </div>`:''}
+
+    <!-- Part list -->
+    <div style="padding:0">`;
+
+  const urgencyColors={critical:'var(--accent2)',urgent:'var(--accent4)',soon:'var(--accent)',ok:'var(--accent3)'};
+  const urgencyLabels={critical:'CRITICAL',urgent:'URGENT',soon:'ORDER SOON',ok:'STOCK UP'};
+  const confColors={'bills-enriched':'var(--accent3)','interval-trigger':'var(--accent4)','usage-only':'var(--text3)'};
+  const confLabels={'bills-enriched':'Bills+Usage','interval-trigger':'Interval Due','usage-only':'Usage Only'};
+
+  recs.forEach((r,i)=>{
+    const uc=urgencyColors[r.urgency];
+    const ul=urgencyLabels[r.urgency];
+    const cc=confColors[r.confidence];
+    const cl=confLabels[r.confidence];
+    const daysStr=r.daysLeft===999?'Well stocked':r.daysLeft===0?'OUT OF STOCK':`${r.daysLeft}d remaining`;
+    html+=`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 20px;border-bottom:1px solid var(--border);gap:12px;${i%2===0?'background:var(--bg2)':'background:var(--bg3)'}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.model} <span style="color:var(--text2);font-weight:400">— ${r.partType}</span></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:3px;line-height:1.6">
+          <span style="color:${uc}">${daysStr}</span> · 
+          ${r.dailyRate.toFixed(2)}/day · ${r.monthlyRate.toFixed(1)}/mo · 
+          <span style="color:var(--text2)">${r.inStock} in stock</span>
+          ${r.billsSignal?` · <span style="color:var(--accent3)">${r.billsSignal}</span>`:''}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:rgba(0,0,0,0.3);color:${cc};border:1px solid ${cc}20">${cl}</span>
+        <span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:rgba(0,0,0,0.3);color:${uc};border:1px solid ${uc}40">${ul}</span>
+        <div style="text-align:center;min-width:52px">
+          <div style="font-family:var(--mono);font-size:22px;font-weight:500;color:var(--accent);line-height:1">${r.suggestedQty}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:1px">UNITS</div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  html+=`</div>
+    <div style="padding:10px 20px;background:var(--bg3);border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.8">
+      MODEL: Usage rate from INV Date (90d rolling) · Bills history from last 12 months · Qty rounded to typical order size where available · Interval-due parts flagged even if stock looks OK · ${LEAD_TIME_DAYS}d SA lead time buffer included
+    </div>
+  </div>`;
+
+  el.innerHTML=html;
 }
 
 function renderForecast(){
